@@ -71,9 +71,9 @@ def main(input_file):
         output_file = next(test_output_dir.glob(f"*{spec['output_file_suffix']}*"))
         frame = read_first_frame(output_file)
         napari_viewer.add_image(
-            frame, name=spec['output_file_suffix'], contrast_limits=[0, 255]
+            frame, name=spec["output_file_suffix"], contrast_limits=[0, 255]
         )
-        napari_viewer.layers[spec['output_file_suffix']].translate = (offset, 1100)
+        napari_viewer.layers[spec["output_file_suffix"]].translate = (offset, 1100)
         offset += frame.shape[0]
 
     napari.run()

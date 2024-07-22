@@ -1,6 +1,7 @@
+import datetime
 import json
 from pathlib import Path
-import datetime
+
 from tqdm import tqdm
 from utils import crop_all_views
 
