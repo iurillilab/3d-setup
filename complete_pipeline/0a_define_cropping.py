@@ -23,6 +23,9 @@ transform_filters = {
 
 
 def main(input_file):
+
+    input_file = Path(input_file)
+
     tstamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     frame = read_first_frame(input_file)
@@ -53,13 +56,7 @@ def main(input_file):
     
     # Test the cropping parameters on the first 100 frames
     test_output_dir = input_file.parent / f'test-output_{tstamp}'
-    # test_output_dir.mkdir(exist_ok=True)
-    
-    # for spec in cropping_specs:
-    #    output_file = test_output_dir / spec['output_file']
-    #     apply_transformations(input_file, output_file, spec['filters'], spec['ffmpeg_args'], num_frames=100)
-
-    crop_all_views(input_file, test_output_dir, json_file, num_frames=None)
+    crop_all_views(input_file, test_output_dir, json_file, num_frames=100, verbose=True)
 
     napari_viewer = napari.Viewer()
     # add first frame of original video:
@@ -77,9 +74,14 @@ def main(input_file):
 
     napari.run()
 
+
 if __name__ == "__main__":
-    tnow = datetime.datetime.now()
-    input_file = Path('/Users/vigji/test_movie_dir/test-movie.avi')
-    main(input_file)
-    end = datetime.datetime.now()
-    print(f"Time elapsed: {(end - tnow).total_seconds()} seconds")
+    # nput_file = input("Enter the path to the input video file: ")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Define cropping parameters")
+    parser.add_argument('file', type=str, help='File to define cropping parameters')
+
+    args = parser.parse_args()
+    
+    main(Path(args.file))

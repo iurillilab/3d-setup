@@ -5,9 +5,29 @@ import numpy as np
 import napari
 from concurrent.futures import ThreadPoolExecutor
 import json
+import datetime
 
 
-def crop_all_views(input_file, output_dir, cropping_specs_file, num_frames=None):
+def crop_all_views(input_file, output_dir, cropping_specs_file, num_frames=None, verbose=False):
+    """Crop all views of a video file using FFmpeg.
+
+    Parameters
+    ----------
+    input_file : str or Path
+        Path to the input video file.
+    output_dir : str or Path
+        Path to the output directory for the cropped videos.
+    cropping_specs_file : str or Path
+        Path to the JSON file containing the cropping specifications.
+    num_frames : int, optional
+        Number of frames to process, by default None means all frames
+    """
+
+    # assert json parameters:
+    assert Path(cropping_specs_file).exists(), f"File {cropping_specs_file} does not exist"
+    assert Path(cropping_specs_file).suffix == ".json", f"File {cropping_specs_file} is not a JSON file"
+
+    assert Path(input_file).exists(), f"File {input_file} does not exist"
 
     with open(cropping_specs_file, 'r') as f:
         cropping_specs = json.load(f)
@@ -15,19 +35,40 @@ def crop_all_views(input_file, output_dir, cropping_specs_file, num_frames=None)
     output_dir.mkdir(exist_ok=True)
     
     # Use ThreadPoolExecutor to run the tasks in parallel
+    tnow = datetime.datetime.now()
+
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
         for spec in cropping_specs:
             output_file = output_dir / spec['output_file']
             futures.append(executor.submit(apply_transformations, input_file, output_file, 
-                                           spec['filters'], spec['ffmpeg_args'], num_frames))
+                                           spec['filters'], spec['ffmpeg_args'], num_frames, verbose))
         
         # Wait for all tasks to complete
         for future in futures:
             future.result()
+        
+    if verbose:
+        print(f"Elapsed time: {datetime.datetime.now() - tnow}")
 
 
-def apply_transformations(input_file, output_file, filters, ffmpeg_args, num_frames=None):
+def apply_transformations(input_file, output_file, filters, ffmpeg_args, num_frames=None, verbose=True):
+    """Apply transformations to a video file using FFmpeg.
+
+    Parameters
+    ----------
+    input_file : str or Path
+        Path to the input video file.
+    output_file : str or Path
+        Path to the output video file.
+    filters : str
+        FFmpeg video filters to apply.
+    ffmpeg_args : list
+        Additional FFmpeg arguments.
+    num_frames : int, optional
+        Number of frames to process, by default None means all frames
+    """
+
     ffmpeg_command = [
         'ffmpeg',
         '-i', str(input_file),  # Input file
@@ -44,7 +85,10 @@ def apply_transformations(input_file, output_file, filters, ffmpeg_args, num_fra
     ffmpeg_command.append(str(output_file))  # Output file
     
     # Run the FFmpeg command
-    subprocess.run(ffmpeg_command, check=True)
+    additional_kwargs = {}
+    if not verbose:
+        additional_kwargs = {'stdout': subprocess.DEVNULL, 'stderr': subprocess.DEVNULL}
+    subprocess.run(ffmpeg_command, check=True, **additional_kwargs)
 
 
 def read_first_frame(input_file):
@@ -68,9 +112,22 @@ def _get_final_crop_params(napari_rectangles):
         final_rectangles_crops[view_name] = (x, y, width, height)
     return final_rectangles_crops
 
-def annotate_cropping_windows(avg_frame):
+def annotate_cropping_windows(frame):
+    """Annotate cropping windows on one frame using napari.
+
+    Parameters
+    ----------
+    frame : np.ndarray
+        A frame of the video.
+
+    Returns
+    -------
+    final_rectangles_crops : dict
+        A dictionary containing the final crop parameters for each view.
+    """
+
     napari_viewer = napari.Viewer()
-    napari_viewer.add_image(avg_frame, name="Average frame", contrast_limits=[0, 255])
+    napari_viewer.add_image(frame, name="Average frame", contrast_limits=[0, 255])
 
     corner_sw = (860, 250)
     corner_nw = (240, 250)
@@ -106,7 +163,7 @@ def annotate_cropping_windows(avg_frame):
         )
         napari_viewer.layers[view_name].mode = "select"
 
-    # napari.run()
+    napari.run()
 
     rectangles = {}
     for view_name in default_rectangles.keys():
