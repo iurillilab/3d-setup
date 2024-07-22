@@ -28,7 +28,7 @@ When you define the windows, please try if possible to just drag them and not ch
 
 After running, the script will open a viewer from which you can check the results of the cropping.
 
-The important output of the script is a `json` file that is saved in the same folder as the movie file, containing the `ffmpeg` commands for the cropping
+The important output of the script is a `json` file that is saved in the same folder as the movie file, containing the `ffmpeg` commands for the cropping.
 
 #### 1. Run `0b_process_videos.py`
 This script processes all the AVI video files in a specified folder using the cropping parameters defined in the JSON file created by `0a_define_cropping.py`.
@@ -41,3 +41,5 @@ To run it you have to specify the folder with the movies and the json file with 
 
 When you run it, all files in the data folder will be processed, so make sure you define the correct one!
 After processing, the cropped movies will be saved in the same folder as the original movies, with the suffix `_cropped` added to the file name.
+
+Processing happens as fast as `ffmpeg` and multiprocessing allow, but it can still be slow for large files. The script will print the progress to the console.
