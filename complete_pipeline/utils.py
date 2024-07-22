@@ -10,7 +10,7 @@ import numpy as np
 
 
 def crop_all_views(
-    input_file, output_dir, cropping_specs_file, num_frames=None, verbose=False
+    input_file, output_dir, cropping_specs_file, num_frames=None, verbose=False,
 ):
     """Crop all views of a video file using FFmpeg.
 
@@ -43,16 +43,15 @@ def crop_all_views(
 
     # Use ThreadPoolExecutor to run the tasks in parallel
     tnow = datetime.datetime.now()
-
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = []
         for spec in cropping_specs:
-            output_file = output_dir / spec["output_file"]
             futures.append(
                 executor.submit(
                     apply_transformations,
                     input_file,
-                    output_file,
+                    output_dir,
+                    spec['output_file_suffix'],
                     spec["filters"],
                     spec["ffmpeg_args"],
                     num_frames,
@@ -69,7 +68,7 @@ def crop_all_views(
 
 
 def apply_transformations(
-    input_file, output_file, filters, ffmpeg_args, num_frames=None, verbose=True
+    input_file, output_dir, output_suffix, filters, ffmpeg_args, num_frames=None, verbose=True
 ):
     """Apply transformations to a video file using FFmpeg.
 
@@ -86,6 +85,7 @@ def apply_transformations(
     num_frames : int, optional
         Number of frames to process, by default None means all frames
     """
+    output_dir = Path(output_dir)
 
     ffmpeg_command = [
         "ffmpeg",
@@ -104,7 +104,7 @@ def apply_transformations(
             ["-vframes", str(num_frames)]
         )  # Number of frames to process
 
-    ffmpeg_command.append(str(output_file))  # Output file
+    ffmpeg_command.append(f"{output_dir / input_file.stem}_{output_suffix}.avi")  # Output file
 
     # Run the FFmpeg command
     additional_kwargs = {}

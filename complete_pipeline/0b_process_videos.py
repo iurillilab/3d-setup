@@ -1,15 +1,15 @@
 import json
 from pathlib import Path
-
+import datetime
 from tqdm import tqdm
 from utils import crop_all_views
 
 
-def process_videos_in_folder(folder, json_file):
+def process_videos_in_folder(folder, json_file, timestamp):
     avi_files = list(Path(folder).rglob("*.avi"))
 
     for avi_file in tqdm(avi_files):
-        output_dir = avi_file.parent / f"{avi_file.stem}_cropped"
+        output_dir = avi_file.parent / f"{avi_file.stem}_cropped_{timestamp}"
         crop_all_views(avi_file, output_dir, json_file, verbose=False)
 
 
@@ -27,4 +27,5 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    process_videos_in_folder(Path(args.folder), Path(args.json_file))
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    process_videos_in_folder(Path(args.folder), Path(args.json_file), timestamp)

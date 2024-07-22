@@ -43,7 +43,7 @@ def main(input_file):
         cropping_specs.append(
             {
                 "transform": rect_name,
-                "output_file": f"output-cropped-{rect_name}.avi",
+                "output_file_suffix": f"{rect_name}.avi",
                 "filters": filters,
                 "ffmpeg_args": ffmpeg_args,
             }
@@ -68,12 +68,12 @@ def main(input_file):
     # of the original video one above the other:
     offset = 0
     for spec in cropping_specs:
-        output_file = test_output_dir / spec["output_file"]
+        output_file = next(test_output_dir.glob(f"*{spec['output_file_suffix']}*"))
         frame = read_first_frame(output_file)
         napari_viewer.add_image(
-            frame, name=spec["output_file"], contrast_limits=[0, 255]
+            frame, name=spec['output_file_suffix'], contrast_limits=[0, 255]
         )
-        napari_viewer.layers[spec["output_file"]].translate = (offset, 1100)
+        napari_viewer.layers[spec['output_file_suffix']].translate = (offset, 1100)
         offset += frame.shape[0]
 
     napari.run()
