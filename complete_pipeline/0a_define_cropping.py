@@ -1,14 +1,23 @@
 import datetime
 import json
 from pathlib import Path
-import numpy as np
-from matplotlib import cm
 
 import napari
+import numpy as np
+from matplotlib import cm
 from utils import annotate_cropping_windows, crop_all_views, read_first_frame
 
-
-possible_para =['ffmpeg', '-y', '-i','-pix_fmt', 'yuv420p', '-preset', 'superfast', '-crf', '23', ]
+possible_para = [
+    "ffmpeg",
+    "-y",
+    "-i",
+    "-pix_fmt",
+    "yuv420p",
+    "-preset",
+    "superfast",
+    "-crf",
+    "23",
+]
 
 ffmpeg_args = {
     "-c:v": "libx264",
@@ -47,6 +56,7 @@ def get_coordinates(frame, name: str, coordinates):
     adjusted_points = points_layer.data
     return adjusted_points
 
+
 def hflip(arr, value):
     points_flipped = np.zeros_like(arr)  # initialize the array
     points_flipped[:, 1] = (
@@ -69,7 +79,6 @@ def transpose1(arr, value):
 
 
 def transpose2(arr, value):
-
     points_transposed = np.zeros_like(arr)  # initialize the array
     points_transposed[:, 1] = arr[:, 0]  # new x is the old y
     points_transposed[:, 0] = value[2] - arr[:, 1]  # new y is the width - the old x
@@ -137,9 +146,8 @@ def main(input_file):
     frame = read_first_frame(input_file)
     rectangles = annotate_cropping_windows(frame)
 
-    # insert function to 
+    # insert function to
     coordinates_transfrmed = get_coordinates_arena_and_transform(rectangles, frame)
-
 
     test_output_dir = input_file.parent / f"test-output_{tstamp}"
 
@@ -153,14 +161,14 @@ def main(input_file):
         cropping_specs.append(
             {
                 "transform": rect_name,
-                "output_file_suffix": f"{rect_name}.avi", # try to substitue .mp4
+                "output_file_suffix": f"{rect_name}.avi",  # try to substitue .mp4
                 "filters": filters,
                 "ffmpeg_args": ffmpeg_args,
             }
         )
     for key, value in coordinates_transfrmed.items():
         coordinates_transfrmed[key] = value.tolist()
-    cropping_specs.append({"points_coordinate":coordinates_transfrmed})
+    cropping_specs.append({"points_coordinate": coordinates_transfrmed})
     # Save cropping specs to a JSON file
     json_file = input_file.parent / f"{input_file.stem}_{tstamp}.json"
     with open(json_file, "w") as f:

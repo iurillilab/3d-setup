@@ -6,6 +6,7 @@ automatic cleanup of generated files.
 
 import shutil
 from pathlib import Path
+
 import pytest
 
 
@@ -98,7 +99,4 @@ def video_files(video_sessions: list[Path]) -> dict[Path, list[Path]]:
     dict[Path, list[Path]]
         Mapping of session directories to lists of video file paths.
     """
-    return {
-        session: sorted(session.glob("*.mp4"))
-        for session in video_sessions
-    }
+    return {session: sorted(session.glob("*.mp4")) for session in video_sessions}
