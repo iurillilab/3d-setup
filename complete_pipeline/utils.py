@@ -42,6 +42,7 @@ def crop_all_views(
 
     with open(cropping_specs_file, "r") as f:
         cropping_specs = json.load(f)
+        cropping_specs = cropping_specs[:-1]
 
     output_dir.mkdir(exist_ok=True)
 
@@ -115,7 +116,7 @@ def apply_transformations(
         )  # Number of frames to process
 
     ffmpeg_command.append(
-        f"{output_dir / input_file.stem}_{output_suffix}.avi"
+        f"{output_dir / input_file.stem}_{output_suffix}.mp4"
     )  # Output file
 
     # Run the FFmpeg command
@@ -172,31 +173,40 @@ def annotate_cropping_windows(frame):
     corner_se = (860, 850)
     def_side = 220
 
+#//TODO make the padding automatic
+
+# padding is used to make videos divisible by 16 
+    padding_left_right = 2
+    width_padding_tb = 4
+
     default_rectangles = {
-        "central": [corner_nw, corner_ne, corner_se, corner_sw],
+        "central": [(corner_nw[0] - padding_left_right, corner_nw[1] - width_padding_tb),
+                    (corner_ne[0]- padding_left_right, corner_ne[1] + width_padding_tb),
+                     (corner_se[0]+ padding_left_right, corner_se[1] + width_padding_tb), 
+                      (corner_sw[0]+ padding_left_right, corner_sw[1] - width_padding_tb)],
         "mirror-top": [
-            (corner_nw[0] - def_side, corner_nw[1]),
-            (corner_ne[0] - def_side, corner_ne[1]),
-            corner_ne,
-            corner_nw,
+            (corner_nw[0] - def_side - padding_left_right, corner_nw[1]- width_padding_tb),
+            (corner_ne[0] - def_side +padding_left_right, corner_ne[1] - width_padding_tb),
+            (corner_ne[0] + padding_left_right, corner_ne[1] + width_padding_tb),
+            (corner_nw[0] - padding_left_right, corner_nw[1] + width_padding_tb),
         ],
         "mirror-bottom": [
-            corner_sw,
-            corner_se,
-            (corner_se[0] + def_side, corner_se[1]),
-            (corner_sw[0] + def_side, corner_sw[1]),
+            (corner_sw[0]- padding_left_right, corner_sw[1] - width_padding_tb),
+            (corner_se[0]- padding_left_right, corner_se[1] + width_padding_tb),
+            (corner_se[0] + def_side + padding_left_right, corner_se[1]+ width_padding_tb),
+            (corner_sw[0] + def_side + padding_left_right, corner_sw[1] - width_padding_tb)
         ],
         "mirror-left": [
-            (corner_nw[0], corner_nw[1] - def_side),
-            corner_nw,
-            corner_sw,
-            (corner_sw[0], corner_sw[1] - def_side),
+            (corner_nw[0] - padding_left_right, corner_nw[1] - def_side - padding_left_right),
+           (corner_nw[0] - padding_left_right, corner_nw[1] + padding_left_right),
+            (corner_sw[0] + padding_left_right, corner_sw[1] + padding_left_right),
+            (corner_sw[0] + padding_left_right, corner_sw[1] - def_side - padding_left_right),
         ],
         "mirror-right": [
-            corner_ne,
-            (corner_ne[0], corner_ne[1] + def_side),
-            (corner_se[0], corner_se[1] + def_side),
-            corner_se,
+            (corner_ne[0]- padding_left_right, corner_ne[1] - padding_left_right),
+            (corner_ne[0] - padding_left_right, corner_ne[1] + def_side + padding_left_right),
+            (corner_se[0] + padding_left_right, corner_se[1] + def_side + padding_left_right),
+            (corner_se[0] + padding_left_right, corner_se[1] - padding_left_right),
         ],
     }
 

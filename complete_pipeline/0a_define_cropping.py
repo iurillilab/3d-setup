@@ -8,14 +8,14 @@ import napari
 from utils import annotate_cropping_windows, crop_all_views, read_first_frame
 
 
-
+possible_para =['ffmpeg', '-y', '-i','-pix_fmt', 'yuv420p', '-preset', 'superfast', '-crf', '23', ]
 
 ffmpeg_args = {
     "-c:v": "libx264",
     "-b:v": "30M",
-    "-crf": "1",
-    "-preset": "veryfast",
-    "-pix_fmt": "gray",
+    "-crf": "23",
+    "-preset": "superfast",
+    "-pix_fmt": "yuv420p",
     "-c:a": "copy",
 }
 
@@ -153,7 +153,7 @@ def main(input_file):
         cropping_specs.append(
             {
                 "transform": rect_name,
-                "output_file_suffix": f"{rect_name}.avi",
+                "output_file_suffix": f"{rect_name}.avi", # try to substitue .mp4
                 "filters": filters,
                 "ffmpeg_args": ffmpeg_args,
             }
@@ -179,6 +179,7 @@ def main(input_file):
     # read and display the first frame of each cropped video using napari, and placing it on the side
     # of the original video one above the other:
     offset = 0
+    cropping_specs = cropping_specs[:-1]
     for spec in cropping_specs:
         output_file = next(test_output_dir.glob(f"*{spec['output_file_suffix']}*"))
         frame = read_first_frame(output_file)
