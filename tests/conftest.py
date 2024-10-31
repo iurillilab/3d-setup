@@ -51,49 +51,33 @@ def video_sessions(assets_dir: Path) -> list[Path]:
     return [d for d in assets_dir.iterdir() if d.is_dir()]
 
 
-@pytest.fixture(scope="session")
-def temp_data_dir(assets_dir: Path, tmp_path_factory, request) -> Path:
+def create_temp_dir(
+    assets_dir: Path, tmp_path_factory, request, subfolder: str
+) -> Path:
     """
-    Create a temporary directory by copying the contents of the data subfolder.
-
-    Parameters
-    ----------
-    assets_dir : Path
-        Path to the test assets directory.
-    tmp_path_factory : pytest.TempPathFactory
-        Factory for creating temporary paths.
-    request : pytest.FixtureRequest
-        Fixture to access command line options.
-
-    Yields
-    -------
-    Path
-        Path to the temporary data directory.
+    Create a temporary directory by copying the contents of the specified data subfolder.
     """
-    data_subfolder = assets_dir / "temp_test_data" / assets_dir.name
+    data_subfolder = assets_dir / subfolder
     temp_dir = tmp_path_factory.mktemp(data_subfolder.name)
     shutil.copytree(data_subfolder, temp_dir, dirs_exist_ok=True)
     keep_artifacts = request.config.getoption("--keep-artifacts")
-    try:
-        yield temp_dir
-    finally:
-        if not keep_artifacts:
-            shutil.rmtree(temp_dir)
+    if not keep_artifacts:
+        request.addfinalizer(lambda: shutil.rmtree(temp_dir))
 
 
-@pytest.fixture
-def video_files(video_sessions: list[Path]) -> dict[Path, list[Path]]:
+@pytest.fixture(scope="session")
+def temp_mouse_data_dir(request, assets_dir, tmp_path_factory):
+    """Fixture to provide a temporary mouse data directory for testing.
     """
-    Get dictionary mapping session directories to their video files.
+    subfolder = "multicam_video_2024-07-24T10_20_07_cropped_20241031162801"
+    temp_dir = create_temp_dir(assets_dir, tmp_path_factory, request, subfolder)
+    return temp_dir
 
-    Parameters
-    ----------
-    video_sessions : list[Path]
-        List of video session directories.
 
-    Returns
-    -------
-    dict[Path, list[Path]]
-        Mapping of session directories to lists of video file paths.
+@pytest.fixture(scope="session")
+def temp_calib_data_dir(request, assets_dir, tmp_path_factory):
+    """Fixture to provide a temporary calibration data directory for testing.
     """
-    return {session: sorted(session.glob("*.mp4")) for session in video_sessions}
+    subfolder = "multicam_video_2024-07-24T14_13_45_cropped_20241031162643"
+    temp_dir = create_temp_dir(assets_dir, tmp_path_factory, request, subfolder)
+    return temp_dir
