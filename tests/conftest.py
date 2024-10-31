@@ -1,6 +1,6 @@
 """Test configuration and fixtures for pytest.
 
-This module provides fixtures for managing test assets and artifacts, including
+This module provides fixtures for managing test assets, including
 automatic cleanup of generated files.
 """
 
@@ -30,7 +30,7 @@ def assets_dir() -> Path:
     Path
         Path to the test assets directory.
     """
-    return Path(__file__).parent.parent.parent / "test" / "assets"
+    return Path(__file__).parent / "assets"
 
 
 @pytest.fixture(scope="session")
@@ -51,37 +51,34 @@ def video_sessions(assets_dir: Path) -> list[Path]:
     return [d for d in assets_dir.iterdir() if d.is_dir()]
 
 
-@pytest.fixture
-def session_artifacts(request, video_sessions: list[Path]) -> dict[Path, Path]:
+@pytest.fixture(scope="session")
+def temp_data_dir(assets_dir: Path, tmp_path_factory, request) -> Path:
     """
-    Create and manage artifacts directories for each video session.
+    Create a temporary directory by copying the contents of the data subfolder.
 
     Parameters
     ----------
+    assets_dir : Path
+        Path to the test assets directory.
+    tmp_path_factory : pytest.TempPathFactory
+        Factory for creating temporary paths.
     request : pytest.FixtureRequest
-        The pytest request object.
-    video_sessions : list[Path]
-        List of video session directories.
+        Fixture to access command line options.
 
-    Returns
+    Yields
     -------
-    dict[Path, Path]
-        Mapping of session directories to their artifact directories.
+    Path
+        Path to the temporary data directory.
     """
-    # Create artifact directories
-    artifacts = {}
-    for session_dir in video_sessions:
-        artifact_dir = session_dir / f"artifacts_{request.node.name}"
-        artifact_dir.mkdir(exist_ok=True)
-        artifacts[session_dir] = artifact_dir
-
-    yield artifacts
-
-    # Cleanup unless --keep-artifacts is specified
-    if not request.config.getoption("--keep-artifacts"):
-        for artifact_dir in artifacts.values():
-            if artifact_dir.exists():
-                shutil.rmtree(artifact_dir)
+    data_subfolder = assets_dir / "temp_test_data" / assets_dir.name
+    temp_dir = tmp_path_factory.mktemp(data_subfolder.name)
+    shutil.copytree(data_subfolder, temp_dir, dirs_exist_ok=True)
+    keep_artifacts = request.config.getoption("--keep-artifacts")
+    try:
+        yield temp_dir
+    finally:
+        if not keep_artifacts:
+            shutil.rmtree(temp_dir)
 
 
 @pytest.fixture
