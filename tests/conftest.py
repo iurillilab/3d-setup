@@ -69,8 +69,7 @@ def create_temp_dir(
 
 @pytest.fixture(scope="session")
 def temp_mouse_data_dir(request, assets_dir, tmp_path_factory):
-    """Fixture to provide a temporary mouse data directory for testing.
-    """
+    """Fixture to provide a temporary mouse data directory for testing."""
     subfolder = "multicam_video_2024-07-24T10_20_07_cropped_20241031162801"
     temp_dir = create_temp_dir(assets_dir, tmp_path_factory, request, subfolder)
     return temp_dir
@@ -78,8 +77,7 @@ def temp_mouse_data_dir(request, assets_dir, tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def temp_calib_data_dir(request, assets_dir, tmp_path_factory):
-    """Fixture to provide a temporary calibration data directory for testing.
-    """
+    """Fixture to provide a temporary calibration data directory for testing."""
     subfolder = "multicam_video_2024-07-24T14_13_45_cropped_20241031162643"
     temp_dir = create_temp_dir(assets_dir, tmp_path_factory, request, subfolder)
     return temp_dir
