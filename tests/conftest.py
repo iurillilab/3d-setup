@@ -64,6 +64,8 @@ def create_temp_dir(
     if not keep_artifacts:
         request.addfinalizer(lambda: shutil.rmtree(temp_dir))
 
+    return temp_dir
+
 
 @pytest.fixture(scope="session")
 def temp_mouse_data_dir(request, assets_dir, tmp_path_factory):

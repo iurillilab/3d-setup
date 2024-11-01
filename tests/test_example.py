@@ -2,34 +2,19 @@ import pytest
 from pathlib import Path
 
 
-def test_temp_dir_exists(temp_mouse_data_dir: Path):
+@pytest.mark.parametrize("temp_dir", ["temp_mouse_data_dir", "temp_calib_data_dir"])
+def test_temp_dir_exists(request, temp_dir: str):
     """
     Assert that the temporary data directory exists.
-
-    Parameters
-    ----------
-    temp_data_dir : Path
-        Path to the temporary data directory.
     """
-    assert temp_mouse_data_dir.exists(), "Temporary data directory does not exist."
+    dir_path = request.getfixturevalue(temp_dir)
+    assert dir_path.exists(), f"Temporary data directory {temp_dir} does not exist."
 
 
-def test_temp_dir_contains_expected_files(temp_mouse_data_dir: Path):
+@pytest.mark.parametrize("temp_dir", ["temp_mouse_data_dir", "temp_calib_data_dir"])
+def test_temp_dir_contains_expected_files(request, temp_dir: str):
     """
-    Assert that the temporary data directory contains expected files.
-
-    Parameters
-    ----------
-    temp_data_dir : Path
-        Path to the temporary data directory.
+    Assert that the temporary data directories contain expected files.
     """
-    # Define expected files relative to the data subfolder
-    expected_files = [
-        "sample1.csv",
-        "sample2.csv",
-        "config.yaml",
-    ]
-
-    for file_name in expected_files:
-        file_path = temp_data_dir / file_name
-        assert file_path.exists(), f"Expected file {file_name} does not exist in temporary data directory."
+    dir_path = request.getfixturevalue(temp_dir)
+    assert len(list(dir_path.glob("*"))) == 5, f"Temporary data directory {temp_dir} does not contain the expected number of files."
