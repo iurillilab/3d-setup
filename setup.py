@@ -1,7 +1,7 @@
 import setuptools
 
 with open("README.md", "r") as f:
-    long_description = f.read()
+    long_description = "ThreeD setup data pipeline"  # f.read()
 
 with open("requirements_dev.txt") as f:
     requirements_dev = f.read().splitlines()
