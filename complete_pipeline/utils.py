@@ -173,39 +173,65 @@ def annotate_cropping_windows(frame):
     corner_se = (860, 850)
     def_side = 220
 
-#//TODO make the padding automatic
+    # //TODO make the padding automatic
 
-# padding is used to make videos divisible by 16 
+    # padding is used to make videos divisible by 16
     padding_left_right = 2
     width_padding_tb = 4
 
     default_rectangles = {
-        "central": [(corner_nw[0] - padding_left_right, corner_nw[1] - width_padding_tb),
-                    (corner_ne[0]- padding_left_right, corner_ne[1] + width_padding_tb),
-                     (corner_se[0]+ padding_left_right, corner_se[1] + width_padding_tb), 
-                      (corner_sw[0]+ padding_left_right, corner_sw[1] - width_padding_tb)],
+        "central": [
+            (corner_nw[0] - padding_left_right, corner_nw[1] - width_padding_tb),
+            (corner_ne[0] - padding_left_right, corner_ne[1] + width_padding_tb),
+            (corner_se[0] + padding_left_right, corner_se[1] + width_padding_tb),
+            (corner_sw[0] + padding_left_right, corner_sw[1] - width_padding_tb),
+        ],
         "mirror-top": [
-            (corner_nw[0] - def_side - padding_left_right, corner_nw[1]- width_padding_tb),
-            (corner_ne[0] - def_side +padding_left_right, corner_ne[1] - width_padding_tb),
+            (
+                corner_nw[0] - def_side - padding_left_right,
+                corner_nw[1] - width_padding_tb,
+            ),
+            (
+                corner_ne[0] - def_side + padding_left_right,
+                corner_ne[1] - width_padding_tb,
+            ),
             (corner_ne[0] + padding_left_right, corner_ne[1] + width_padding_tb),
             (corner_nw[0] - padding_left_right, corner_nw[1] + width_padding_tb),
         ],
         "mirror-bottom": [
-            (corner_sw[0]- padding_left_right, corner_sw[1] - width_padding_tb),
-            (corner_se[0]- padding_left_right, corner_se[1] + width_padding_tb),
-            (corner_se[0] + def_side + padding_left_right, corner_se[1]+ width_padding_tb),
-            (corner_sw[0] + def_side + padding_left_right, corner_sw[1] - width_padding_tb)
+            (corner_sw[0] - padding_left_right, corner_sw[1] - width_padding_tb),
+            (corner_se[0] - padding_left_right, corner_se[1] + width_padding_tb),
+            (
+                corner_se[0] + def_side + padding_left_right,
+                corner_se[1] + width_padding_tb,
+            ),
+            (
+                corner_sw[0] + def_side + padding_left_right,
+                corner_sw[1] - width_padding_tb,
+            ),
         ],
         "mirror-left": [
-            (corner_nw[0] - padding_left_right, corner_nw[1] - def_side - padding_left_right),
-           (corner_nw[0] - padding_left_right, corner_nw[1] + padding_left_right),
+            (
+                corner_nw[0] - padding_left_right,
+                corner_nw[1] - def_side - padding_left_right,
+            ),
+            (corner_nw[0] - padding_left_right, corner_nw[1] + padding_left_right),
             (corner_sw[0] + padding_left_right, corner_sw[1] + padding_left_right),
-            (corner_sw[0] + padding_left_right, corner_sw[1] - def_side - padding_left_right),
+            (
+                corner_sw[0] + padding_left_right,
+                corner_sw[1] - def_side - padding_left_right,
+            ),
         ],
         "mirror-right": [
-            (corner_ne[0]- padding_left_right, corner_ne[1] - padding_left_right),
-            (corner_ne[0] - padding_left_right, corner_ne[1] + def_side + padding_left_right),
-            (corner_se[0] + padding_left_right, corner_se[1] + def_side + padding_left_right),
+            (corner_ne[0] - padding_left_right, corner_ne[1] - padding_left_right),
+            (
+                corner_ne[0] - padding_left_right,
+                corner_ne[1] + def_side + padding_left_right,
+            ),
+            (
+                corner_se[0] + padding_left_right,
+                corner_se[1] + def_side + padding_left_right,
+            ),
             (corner_se[0] + padding_left_right, corner_se[1] - padding_left_right),
         ],
     }

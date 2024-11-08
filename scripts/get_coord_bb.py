@@ -1,11 +1,11 @@
-from pathlib import Path
-import napari
-import cv2
-import numpy as np
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog
-from matplotlib import cm
 
+import cv2
+import napari
+import numpy as np
+from matplotlib import cm
 
 # # dispaly user interface to select the directory, it expect a directory with the 5 videos cropped in mp4 format (it can be changed, but mp4 works better with sleaap)
 # root = tk.Tk()
@@ -104,7 +104,6 @@ def transpose1(arr, value):
 
 
 def transpose2(arr, value):
-
     points_transposed = np.zeros_like(arr)  # initialize the array
     points_transposed[:, 1] = arr[:, 0]  # new x is the old y
     points_transposed[:, 0] = value[2] - arr[:, 1]  # new y is the width - the old x
