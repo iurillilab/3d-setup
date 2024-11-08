@@ -31,7 +31,7 @@ def get_video_paths(main_path):
             video_paths.append(str(video))
     return video_paths
 
-#function that takes video paths and encode them and convert them into mp4 format to run inference using ffmpeg
+#function that takes video paths and encode them and convert them into mp4 format to run inference using ffmpeg no more needed
 # def encode_and_convert(video_paths):
 #     '''
 #     Input: video_paths: list: list of paths to all the videos in the main folder
@@ -72,7 +72,7 @@ def run_inference(enc_vid):
 
 if __name__ == '__main__':
     # GEN_VIDEO_PATH = r'D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting'
-    GEN_VIDEO_PATH = r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\m_test"
+    GEN_VIDEO_PATH = r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\sample"
     model = r"D:\SLEAP_models\test\models\241007_120850.single_instance.n=500"
 
 

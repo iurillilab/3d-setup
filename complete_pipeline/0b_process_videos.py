@@ -12,7 +12,7 @@ def process_videos_in_folder(folder, json_file, timestamp):
     # central, mirror-top, mirror-bottom, mirror-left, mirror-right:
     avi_files = [f for f in avi_files if not any(
         view in f.stem for view in ["central", "mirror-top", "mirror-bottom", "mirror-left", "mirror-right"]
-    )]  "improved detection"
+    )] # "improved detection"
 
     # filter out files from previous runs, if in the name there's 
     # central, mirror-top, mirror-bottom, mirror-left, mirror-right:
