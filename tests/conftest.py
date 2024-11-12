@@ -4,9 +4,9 @@ This module provides fixtures for managing test assets, including
 automatic cleanup of generated files.
 """
 
+import pickle
 import shutil
 from pathlib import Path
-import pickle
 
 import pytest
 
@@ -86,10 +86,8 @@ def temp_calib_data_dir(request, assets_dir, tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def coordinates_data_dict(assets_dir):
-    with open(assets_dir / 'arena_tracked_points.pkl', 'rb') as f:
+    with open(assets_dir / "arena_tracked_points.pkl", "rb") as f:
         data_dict = pickle.load(f)
     return data_dict
     # load in a dictionary
     # return dictionary
-
-

@@ -51,9 +51,9 @@ def get_coordinates(frame, name: str, coordinates, value):
     rect = viewer.add_shapes(
         rectangle,
         shape_type="polygon",
-        edge_color="red", 
-        face_color="white",)
-
+        edge_color="red",
+        face_color="white",
+    )
 
     viewer.add_image(frame, name=name, contrast_limits=[0, 255])
     points_layer = viewer.add_points(
@@ -160,8 +160,9 @@ def check_rectangles_fit_frame(rectangles, frame):
         raise ValueError(
             f"Warning: the following rectangles exceed the frame dimensions: {exeding_rectangles}"
         )
-        #return True
-    #return False
+        # return True
+    # return False
+
 
 def get_right_rectangles(frame):
     while True:
@@ -173,8 +174,6 @@ def get_right_rectangles(frame):
             print("Rectangles exceed the frame dimensions")
     return rectangles
 
-    
-
 
 def main(input_file):
     input_file = Path(input_file)
@@ -182,10 +181,9 @@ def main(input_file):
     tstamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     frame = read_first_frame(input_file)
-    #rectangles = annotate_cropping_windows(frame)
+    # rectangles = annotate_cropping_windows(frame)
     rectangles = get_right_rectangles(frame)
-    #add warning if any of the rectangles exceed the frame dimensions
-
+    # add warning if any of the rectangles exceed the frame dimensions
 
     # insert function to
     coordinates_transfrmed = get_coordinates_arena_and_transform(rectangles, frame)

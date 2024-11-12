@@ -1,6 +1,6 @@
 import pytest
-import threed_utils as tdu
 
+import threed_utils as tdu
 
 
 @pytest.mark.parametrize("temp_dir", ["temp_mouse_data_dir", "temp_calib_data_dir"])
@@ -29,11 +29,12 @@ def test_video_processing():
     cropped_video_dict = crop_video(video_location)
 
     assert cropped_video_dict.keys() == ["left", "right", "top", "bottom"]
-    
-    assert cropped_video_dict["left"].shape == (10, 10)
-    
-    assert np.allequal(cropped_video_dict["left"][0, :10], np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
 
+    assert cropped_video_dict["left"].shape == (10, 10)
+
+    assert np.allequal(
+        cropped_video_dict["left"][0, :10], np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    )
 
 
 def test_helloworld():
