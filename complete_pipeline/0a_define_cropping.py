@@ -37,10 +37,23 @@ transform_filters = {
 }
 
 
-def get_coordinates(frame, name: str, coordinates):
+def get_coordinates(frame, name: str, coordinates, value):
     viewer = napari.Viewer()
     cmap = cm.get_cmap("hsv", len(coordinates[name]))
     colors = [cmap(i) for i in range(len(coordinates[name]))]
+    y, x, widht, height = value
+    top_left = [y, x]
+    top_right = [y, x + widht]
+    bottom_right = [y + height, x + widht]
+    bottom_left = [y + height, x]
+    rectangle = np.array([top_left, top_right, bottom_right, bottom_left])
+
+    rect = viewer.add_shapes(
+        rectangle,
+        shape_type="polygon",
+        edge_color="red", 
+        face_color="white",)
+
 
     viewer.add_image(frame, name=name, contrast_limits=[0, 255])
     points_layer = viewer.add_points(
@@ -124,7 +137,7 @@ def get_coordinates_arena_and_transform(rectangles, frame):
 
     for key, value in rectangles.items():
         coordinates_arena[key] = np.asanyarray(
-            get_coordinates(frame, str(key), coordinates)
+            get_coordinates(frame, str(key), coordinates, value)
         )
         # cropping
         y, x, h, w = value  # try it first
@@ -138,13 +151,41 @@ def get_coordinates_arena_and_transform(rectangles, frame):
     return coordinates_arena
 
 
+def check_rectangles_fit_frame(rectangles, frame):
+    exeding_rectangles = []
+    for key, (y, x, width, height) in rectangles.items():
+        if x + width > frame.shape[1] or y + height > frame.shape[0]:
+            exeding_rectangles.append(key)
+    if exeding_rectangles:
+        raise ValueError(
+            f"Warning: the following rectangles exceed the frame dimensions: {exeding_rectangles}"
+        )
+        #return True
+    #return False
+
+def get_right_rectangles(frame):
+    while True:
+        try:
+            rectangles = annotate_cropping_windows(frame)
+            check_rectangles_fit_frame(rectangles, frame)
+            break
+        except ValueError:
+            print("Rectangles exceed the frame dimensions")
+    return rectangles
+
+    
+
+
 def main(input_file):
     input_file = Path(input_file)
 
     tstamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     frame = read_first_frame(input_file)
-    rectangles = annotate_cropping_windows(frame)
+    #rectangles = annotate_cropping_windows(frame)
+    rectangles = get_right_rectangles(frame)
+    #add warning if any of the rectangles exceed the frame dimensions
+
 
     # insert function to
     coordinates_transfrmed = get_coordinates_arena_and_transform(rectangles, frame)
