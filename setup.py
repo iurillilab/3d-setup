@@ -13,7 +13,7 @@ setuptools.setup(
     name="threed_utils",
     version="0.0.1",
     author="Iurilli lab",
-    packages=setuptools.find_namespace_packages(exclude=("docs", "tests*")),
+    packages=setuptools.find_namespace_packages(exclude=("docs", "tests*", "notebooks", "sleap", "scripts")),
     install_requires=requirements,
     extras_require=dict(dev=requirements_dev),
     classifiers=[

@@ -6,6 +6,7 @@ automatic cleanup of generated files.
 
 import shutil
 from pathlib import Path
+import pickle
 
 import pytest
 
@@ -81,3 +82,14 @@ def temp_calib_data_dir(request, assets_dir, tmp_path_factory):
     subfolder = "multicam_video_2024-07-24T14_13_45_cropped_20241031162643"
     temp_dir = create_temp_dir(assets_dir, tmp_path_factory, request, subfolder)
     return temp_dir
+
+
+@pytest.fixture(scope="session")
+def coordinates_data_dict(assets_dir):
+    with open(assets_dir / 'arena_tracked_points.pkl', 'rb') as f:
+        data_dict = pickle.load(f)
+    return data_dict
+    # load in a dictionary
+    # return dictionary
+
+
