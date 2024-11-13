@@ -51,9 +51,7 @@ position = ds.position
 # colouring them by individual.
 
 fig, ax = plt.subplots(1, 1)
-for mouse_name, col in zip(
-    position.individuals.values, ["r", "g", "b"], strict=False
-):
+for mouse_name, col in zip(position.individuals.values, ["r", "g", "b"], strict=False):
     ax.plot(
         position.sel(individuals=mouse_name, space="x"),
         position.sel(individuals=mouse_name, space="y"),
@@ -249,17 +247,12 @@ fig.colorbar(sc, ax=ax, label="time (s)")
 # mouse along its trajectory.
 
 # length of each displacement vector
-displacement_vectors_lengths = compute_norm(
-    displacement.sel(individuals=mouse_name)
-)
+displacement_vectors_lengths = compute_norm(displacement.sel(individuals=mouse_name))
 
 # sum the lengths of all displacement vectors (in pixels)
 total_displacement = displacement_vectors_lengths.sum(dim="time").values[0]
 
-print(
-    f"The mouse {mouse_name}'s trajectory is {total_displacement:.2f} "
-    "pixels long"
-)
+print(f"The mouse {mouse_name}'s trajectory is {total_displacement:.2f} " "pixels long")
 
 # %%
 # Compute velocity
