@@ -3,7 +3,8 @@ import napari
 import numpy as np
 from movement.napari.layer_styles import TracksStyle, PointsStyle
 from movement.napari.utils import columns_to_categorical_codes
-from movement.napari.convert import ds_to_napari_tracks
+from movement.napari.convert import ds_to_napari_tracks, _replace_nans_with_zeros
+from movement.filtering import filter_by_confidence, interpolate_over_time
 
 from movement import sample_data
 
@@ -13,7 +14,13 @@ print(*file_names, sep='\n')  # print each sample file in a separate line
 # %%
 ds_name = "SLEAP_single-mouse_EPM.predictions.slp"
 ds = sample_data.fetch_dataset(ds_name)
+ds_filtered = filter_by_confidence(ds, threshold=0.6, print_report=True)
+ds_interpolated = interpolate_over_time(
+    ds_filtered, method="linear", max_gap=1, print_report=True
+)
+
 # print(ds["position"])
+# self.data, self.props = ds_to_napari_tracks(ds)
 track, props = ds_to_napari_tracks(ds)
 
 # %%
@@ -40,9 +47,9 @@ tracks_style = TracksStyle(
 )
 tracks_style.set_color_by(prop="keypoint", cmap="turbo")
 
-# %%
+
 viewer = napari.Viewer()
 # Add the new layers to the napari viewer
-viewer.add_tracks(ds.data) # , **tracks_style.as_kwargs())
-viewer.add_points(ds.data[:, 1:]) # , **points_style.as_kwargs())
+viewer.add_tracks(track) # , **tracks_style.as_kwargs())
+viewer.add_points(track[:, 1:]) # , **points_style.as_kwargs())
 # %%
