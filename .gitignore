@@ -159,4 +159,10 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+*.DS_Store
+
+# Ignore all .pkl files
 *.pkl
+
+# Except .pkl files in tests/assets
+!tests/assets/*.pkl
