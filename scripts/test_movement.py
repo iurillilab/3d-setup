@@ -15,16 +15,12 @@ calibration_path = Path("/Users/vigji/code/3d-setup/tests/assets/arena_tracked_p
 with open(calibration_path, "rb") as f:
     calibration = pickle.load(f)
 
-calibration["extrinsics"]
-
 # %%
 triangulated_points = triangulate_all_keypoints(calibration["points"]["tracked_points"], 
                                                 calibration["extrinsics"],
                                                 calibration["intrinsics"])
 
-
-reordered_points = np.transpose(triangulated_points, (1, 0, 2))[:, None, :, :]
-ds = load_poses.from_numpy(reordered_points)
+ds = load_poses.from_numpy(np.transpose(triangulated_points, (1, 0, 2))[:, None, :, :])
 
 
 # %%
