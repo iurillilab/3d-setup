@@ -13,7 +13,7 @@ Arguments:
 Once done, run deeplabcut.convertcsv2h5('config.yaml', userfeedback=False) 
 on the config file to obtain the .h5 files needed by DeepLabCut.
 """
- 
+
 import argparse
 from pathlib import Path
 import time
@@ -29,7 +29,9 @@ import cv2
 import io
 
 
-def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", scorer="me"):
+def convert_slep_to_dlc(
+    slp_file, dlc_dir, project_name="converted_project", scorer="me"
+):
     """
     Convert a SLEAP project to a DeepLabCut project structure.
 
@@ -63,7 +65,18 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
 
     # Open SLEAP file and process
     with h5py.File(slp_file, "r") as hdf_file:
-        video_groups = [f"video{i}" for i in range(len([k for k in hdf_file.keys() if k.startswith("video") and k[5:].isdigit()]))]
+        video_groups = [
+            f"video{i}"
+            for i in range(
+                len(
+                    [
+                        k
+                        for k in hdf_file.keys()
+                        if k.startswith("video") and k[5:].isdigit()
+                    ]
+                )
+            )
+        ]
         metadata = json.loads(hdf_file["metadata"].attrs["json"])
 
         # Extract keypoints and skeleton
@@ -92,26 +105,29 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
             video_data = hdf_file[f"{video_group}/video"][:]
             frame_numbers = hdf_file[f"{video_group}/frame_numbers"][:]
             video_filename = Path(
-                json.loads(hdf_file[f"{video_group}/source_video"].attrs["json"])["backend"]["filename"]
+                json.loads(hdf_file[f"{video_group}/source_video"].attrs["json"])[
+                    "backend"
+                ]["filename"]
             ).name
             video_base_name = video_filename.split(".")[0]
             output_dir = labeled_data_dir / video_base_name
 
             if len(frame_numbers) > 200:
-                print(f"Skipping video '{video_group}' with {len(frame_numbers)} frames.")
+                print(
+                    f"Skipping video '{video_group}' with {len(frame_numbers)} frames."
+                )
                 continue
 
             print(f"Processing video: {video_filename} ({len(frame_numbers)} frames)")
             if len(frame_numbers) == 0:
-                continue    
+                continue
             output_dir.mkdir(exist_ok=True)
-
 
             # Save video frames as images
             for i, (img_bytes, frame_number) in tqdm(
                 enumerate(zip(video_data, frame_numbers)),
                 total=len(frame_numbers),
-                desc="Saving frames"
+                desc="Saving frames",
             ):
                 img = Image.open(io.BytesIO(np.array(img_bytes, dtype=np.uint8)))
                 img = np.array(img)
@@ -128,15 +144,21 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
 
             data = []
 
-            for frame_id, frame_idx in tqdm(frame_refs.items(), desc="Processing frames"):
+            for frame_id, frame_idx in tqdm(
+                frame_refs.items(), desc="Processing frames"
+            ):
                 instance_indices = frame_to_instances.get(frame_id, [])
                 # print("frame_id", frame_id, "frame_idx", frame_idx)
                 # assert that all frame_idxs correspond to saved frames
                 saved_frames_files = [f.name for f in output_dir.glob("*.png")]
-                saved_frames_numbers = [int(f.split("img")[1].split(".")[0]) for f in saved_frames_files]
-                # assert 
+                saved_frames_numbers = [
+                    int(f.split("img")[1].split(".")[0]) for f in saved_frames_files
+                ]
+                # assert
                 if not instance_indices or frame_idx not in saved_frames_numbers:
-                    print(f"Skipping frame {frame_idx} because it is not in saved_frames_numbers {saved_frames_numbers}")
+                    print(
+                        f"Skipping frame {frame_idx} because it is not in saved_frames_numbers {saved_frames_numbers}"
+                    )
                     continue
 
                 for idx in instance_indices:
@@ -157,7 +179,7 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
                 shutil.rmtree(output_dir)
                 continue
 
-            columns = ["frame"] +[f"{bp}_{c}" for bp in keypoints for c in ("x", "y")]
+            columns = ["frame"] + [f"{bp}_{c}" for bp in keypoints for c in ("x", "y")]
             # print(data)
             labels_df = pd.DataFrame(data, columns=columns)
             scorer_header = [scorer] * (len(columns) - 1)
@@ -186,17 +208,19 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
             multilevel_df.to_hdf(output_dir / f"CollectedData_{scorer}.h5", key="data")
 
         # Update config with additional required parameters
-        config.update({
-            "start": 0,
-            "stop": 1,
-            "numframes2pick": 20,
-            "TrainingFraction": [0.95],
-            "iteration": 3,
-            "default_net_type": "resnet_50",
-            "default_augmenter": "default", 
-            "snapshotindex": -1,
-            "batch_size": 8
-        })
+        config.update(
+            {
+                "start": 0,
+                "stop": 1,
+                "numframes2pick": 20,
+                "TrainingFraction": [0.95],
+                "iteration": 3,
+                "default_net_type": "resnet_50",
+                "default_augmenter": "default",
+                "snapshotindex": -1,
+                "batch_size": 8,
+            }
+        )
 
         # Save DLC config.yaml
         with open(dlc_dir / "config.yaml", "w") as yaml_file:
@@ -204,16 +228,33 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
 
     print(f"Conversion complete! DLC project saved to: {dlc_dir}")
 
+
 # Main entry point
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert SLEAP project to DLC project.")
-    parser.add_argument("--slp_file", type=str, required=True, help="Path to the SLEAP project file (.pkg.slp)")
-    parser.add_argument("--dlc_dir", type=str, required=True, help="Path to the output DLC project directory")
-    parser.add_argument("--run_dlc", type=str, required=False, help="Name of the converted project", default=1)
-
+    parser = argparse.ArgumentParser(
+        description="Convert SLEAP project to DLC project."
+    )
+    parser.add_argument(
+        "--slp_file",
+        type=str,
+        required=True,
+        help="Path to the SLEAP project file (.pkg.slp)",
+    )
+    parser.add_argument(
+        "--dlc_dir",
+        type=str,
+        required=True,
+        help="Path to the output DLC project directory",
+    )
+    parser.add_argument(
+        "--run_dlc",
+        type=str,
+        required=False,
+        help="Name of the converted project",
+        default=1,
+    )
 
     args = parser.parse_args()
-    print(args)
 
     slp_path = Path(args.slp_file)
     dlc_path = Path(args.dlc_dir)
@@ -230,7 +271,7 @@ if __name__ == "__main__":
 
         # Path to your DeepLabCut project's config.yaml
         path_config_file = str(dlc_path / "config.yaml")
- 
+
         p = deeplabcut.create_training_dataset(path_config_file)
         # %%
         # %%
