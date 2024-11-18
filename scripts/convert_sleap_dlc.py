@@ -63,7 +63,7 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
 
     # Open SLEAP file and process
     with h5py.File(slp_file, "r") as hdf_file:
-        video_groups = [key for key in hdf_file.keys() if key.startswith("video")]
+        video_groups = [f"video{i}" for i in range(len([k for k in hdf_file.keys() if k.startswith("video") and k[5:].isdigit()]))]
         metadata = json.loads(hdf_file["metadata"].attrs["json"])
 
         # Extract keypoints and skeleton
@@ -88,6 +88,7 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
 
         # Process each video group
         for video_group in video_groups:
+            print(f"Processing video group: {video_group}")
             video_data = hdf_file[f"{video_group}/video"][:]
             frame_numbers = hdf_file[f"{video_group}/frame_numbers"][:]
             video_filename = Path(
