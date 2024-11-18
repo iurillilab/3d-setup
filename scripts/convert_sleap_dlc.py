@@ -15,7 +15,7 @@ on the config file to obtain the .h5 files needed by DeepLabCut.
 """
  
 import argparse
-import os
+from pathlib import Path
 import time
 import h5py
 import json
@@ -26,106 +26,130 @@ from tqdm import tqdm
 from PIL import Image
 import yaml
 import cv2
-import io 
- 
- 
+import io
+
+
 def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", scorer="me"):
     """
     Convert a SLEAP project to a DeepLabCut project structure.
- 
+
     Args:
         slp_file: Path to the SLEAP .pkg.slp file.
         dlc_dir: Output directory for the DLC project.
         project_name: Name of the converted project.
         scorer: Scorer name for DLC.
     """
+    # Convert paths to Path objects
+    slp_file = Path(slp_file)
+    dlc_dir = Path(dlc_dir)
+
     # Prepare DLC config dictionary
     config = {
         "Task": project_name,
         "scorer": scorer,
         "date": time.strftime("%Y-%m-%d"),
-        "project_path": dlc_dir,
+        "project_path": str(dlc_dir),
         "video_sets": {},
         "bodyparts": [],
         "skeleton": [],
     }
- 
+
     # Create necessary directories
-    os.makedirs(dlc_dir, exist_ok=True)
-    labeled_data_dir = os.path.join(dlc_dir, "labeled-data")
-    videos_dir = os.path.join(dlc_dir, "videos")
-    os.makedirs(labeled_data_dir, exist_ok=True)
-    os.makedirs(videos_dir, exist_ok=True)
- 
+    dlc_dir.mkdir(parents=True, exist_ok=True)
+    labeled_data_dir = dlc_dir / "labeled-data"
+    videos_dir = dlc_dir / "videos"
+    labeled_data_dir.mkdir(exist_ok=True)
+    videos_dir.mkdir(exist_ok=True)
+
     # Open SLEAP file and process
     with h5py.File(slp_file, "r") as hdf_file:
         video_groups = [key for key in hdf_file.keys() if key.startswith("video")]
         metadata = json.loads(hdf_file["metadata"].attrs["json"])
- 
+
         # Extract keypoints and skeleton
         keypoints = [node["name"] for node in metadata["nodes"]]
         links = metadata["skeletons"][0]["links"]
         skeleton = [[keypoints[l["source"]], keypoints[l["target"]]] for l in links]
         config["bodyparts"] = keypoints
         config["skeleton"] = skeleton
- 
+
+        # Pre-index instances by frame_id
+        instances_dataset = hdf_file["instances"]
+        frame_ids = instances_dataset["frame_id"][:]
+        point_id_starts = instances_dataset["point_id_start"][:]
+        point_id_ends = instances_dataset["point_id_end"][:]
+
+        frame_to_instances = {}
+        for idx, frame_id in enumerate(frame_ids):
+            frame_to_instances.setdefault(frame_id, []).append(idx)
+
+        # Read all points once
+        points_dataset = hdf_file["points"][:]
+
         # Process each video group
         for video_group in video_groups:
             video_data = hdf_file[f"{video_group}/video"][:]
             frame_numbers = hdf_file[f"{video_group}/frame_numbers"][:]
-            video_filename = os.path.basename(
+            video_filename = Path(
                 json.loads(hdf_file[f"{video_group}/source_video"].attrs["json"])["backend"]["filename"]
-            )
-            video_base_name = os.path.splitext(video_filename)[0]
-            output_dir = os.path.join(labeled_data_dir, video_base_name)
- 
-            # Skip videos with too many frames
+            ).name
+            video_base_name = video_filename.split(".")[0]
+            output_dir = labeled_data_dir / video_base_name
+
             if len(frame_numbers) > 200:
                 print(f"Skipping video '{video_group}' with {len(frame_numbers)} frames.")
                 continue
- 
-            os.makedirs(output_dir, exist_ok=True)
+
             print(f"Processing video: {video_filename} ({len(frame_numbers)} frames)")
- 
+            if len(frame_numbers) == 0:
+                continue    
+            output_dir.mkdir(exist_ok=True)
+
+
             # Save video frames as images
-            for i, (img_bytes, frame_number) in tqdm(enumerate(zip(video_data, frame_numbers)), total=len(frame_numbers)):
+            for i, (img_bytes, frame_number) in tqdm(
+                enumerate(zip(video_data, frame_numbers)),
+                total=len(frame_numbers),
+                desc="Saving frames"
+            ):
                 img = Image.open(io.BytesIO(np.array(img_bytes, dtype=np.uint8)))
                 img = np.array(img)
                 frame_name = f"img{str(frame_number).zfill(8)}.png"
-                cv2.imwrite(os.path.join(output_dir, frame_name), img)
- 
+                cv2.imwrite(str(output_dir / frame_name), img)
+
             # Create DLC CSV
-            points_dataset = hdf_file["points"]
-            instances_dataset = hdf_file["instances"]
+            frames_dataset = hdf_file["frames"][:]
             frame_refs = {
                 frame["frame_id"]: frame["frame_idx"]
-                for frame in hdf_file["frames"]
+                for frame in frames_dataset
                 if frame["video"] == int(video_group.replace("video", ""))
             }
- 
+
             data = []
-            for frame_id, frame_idx in frame_refs.items():
-                instances = [
-                    inst
-                    for inst in instances_dataset
-                    if inst["frame_id"] == frame_id
-                ]
-                keypoints_data = [
-                    points_dataset[inst["point_id_start"]:inst["point_id_end"]]
-                    for inst in instances
-                ]
-                for kp_data in keypoints_data:
+
+            for frame_id, frame_idx in tqdm(frame_refs.items(), desc="Processing frames"):
+                instance_indices = frame_to_instances.get(frame_id, [])
+                if not instance_indices:
+                    continue
+
+                for idx in instance_indices:
+                    start = point_id_starts[idx]
+                    end = point_id_ends[idx]
+                    kp_data = points_dataset[start:end]
+
                     row = [frame_idx]
-                    for kp in kp_data:
-                        x, y = kp["x"], kp["y"]
-                        row.extend([x if not np.isnan(x) else None, y if not np.isnan(y) else None])
+                    # Vectorized handling of keypoints
+                    x = np.where(np.isnan(kp_data["x"]), None, kp_data["x"])
+                    y = np.where(np.isnan(kp_data["y"]), None, kp_data["y"])
+                    row.extend(x.tolist())
+                    row.extend(y.tolist())
                     data.append(row)
- 
+
             if not data:
                 print(f"No labeled data for video: {video_filename}")
                 shutil.rmtree(output_dir)
                 continue
- 
+
             columns = ["frame"] + [f"{bp}_{c}" for bp in keypoints for c in ("x", "y")]
             labels_df = pd.DataFrame(data, columns=columns)
             scorer_row = ["scorer"] + [scorer] * (len(columns) - 1)
@@ -133,28 +157,30 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
             coords_row = ["coords"] + ["x", "y"] * len(keypoints)
             header_df = pd.DataFrame([scorer_row, bodyparts_row, coords_row], columns=columns)
             final_df = pd.concat([header_df, labels_df], ignore_index=True)
-            final_df.to_csv(os.path.join(output_dir, f"CollectedData_{scorer}.csv"), index=False, header=None)
- 
+            final_df.to_csv(output_dir / f"CollectedData_{scorer}.csv", index=False, header=None)
+
         # Save DLC config.yaml
-        with open(os.path.join(dlc_dir, "config.yaml"), "w") as yaml_file:
+        with open(dlc_dir / "config.yaml", "w") as yaml_file:
             yaml.dump(config, yaml_file, default_flow_style=False)
- 
+
     print(f"Conversion complete! DLC project saved to: {dlc_dir}")
- 
- 
+
 # Main entry point
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert SLEAP project to DLC project.")
     parser.add_argument("--slp_file", type=str, required=True, help="Path to the SLEAP project file (.pkg.slp)")
     parser.add_argument("--dlc_dir", type=str, required=True, help="Path to the output DLC project directory")
     args = parser.parse_args()
- 
-    if not os.path.exists(args.slp_file):
-        raise FileNotFoundError(f"Cannot find SLEAP file: {args.slp_file}")
-    if not os.path.exists(args.dlc_dir):
-        os.makedirs(args.dlc_dir)
- 
-    convert_slep_to_dlc(args.slp_file, args.dlc_dir)
+
+    slp_path = Path(args.slp_file)
+    dlc_path = Path(args.dlc_dir)
+
+    if not slp_path.exists():
+        raise FileNotFoundError(f"Cannot find SLEAP file: {slp_path}")
+    if not dlc_path.exists():
+        dlc_path.mkdir(parents=True)
+
+    convert_slep_to_dlc(slp_path, dlc_path)
 
 
 
