@@ -160,6 +160,19 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
             final_df = pd.concat([header_df, labels_df], ignore_index=True)
             final_df.to_csv(output_dir / f"CollectedData_{scorer}.csv", index=False, header=None)
 
+        # Update config with additional required parameters
+        config.update({
+            "start": 0,
+            "stop": 1,
+            "numframes2pick": 20,
+            "TrainingFraction": [0.95],
+            "iteration": 3,
+            "default_net_type": "resnet_50",
+            "default_augmenter": "default", 
+            "snapshotindex": -1,
+            "batch_size": 8
+        })
+
         # Save DLC config.yaml
         with open(dlc_dir / "config.yaml", "w") as yaml_file:
             yaml.dump(config, yaml_file, default_flow_style=False)
@@ -183,6 +196,30 @@ if __name__ == "__main__":
 
     convert_slep_to_dlc(slp_path, dlc_path)
 
+    import deeplabcut
+
+    # Path to your DeepLabCut project's config.yaml
+    path_config_file = str(dlc_path / "config.yaml")
+
+    deeplabcut.create_training_dataset(path_config_file)
+    train_pose_config, _ = deeplabcut.return_train_network_path(config_path)
+    augs = {
+        "gaussian_noise": True,
+        "elastic_transform": True,
+        "rotation": 180,
+        "covering": True,
+        "motion_blur": True,
+    }
+    deeplabcut.auxiliaryfunctions.edit_config(
+        train_pose_config,
+        augs,
+    )
+
+    # Start training the DeepLabCut network
+    deeplabcut.train_network(path_config_file, shuffle=1)
+
+    # Optionally, evaluate the trained network
+    # deeplabcut.evaluate_network(config_path)
 
 
 '''
