@@ -130,7 +130,13 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
 
             for frame_id, frame_idx in tqdm(frame_refs.items(), desc="Processing frames"):
                 instance_indices = frame_to_instances.get(frame_id, [])
-                if not instance_indices:
+                # print("frame_id", frame_id, "frame_idx", frame_idx)
+                # assert that all frame_idxs correspond to saved frames
+                saved_frames_files = [f.name for f in output_dir.glob("*.png")]
+                saved_frames_numbers = [int(f.split("img")[1].split(".")[0]) for f in saved_frames_files]
+                # assert 
+                if not instance_indices or frame_idx not in saved_frames_numbers:
+                    print(f"Skipping frame {frame_idx} because it is not in saved_frames_numbers {saved_frames_numbers}")
                     continue
 
                 for idx in instance_indices:
@@ -151,14 +157,33 @@ def convert_slep_to_dlc(slp_file, dlc_dir, project_name="converted_project", sco
                 shutil.rmtree(output_dir)
                 continue
 
-            columns = ["frame"] + [f"{bp}_{c}" for bp in keypoints for c in ("x", "y")]
+            columns = ["frame"] +[f"{bp}_{c}" for bp in keypoints for c in ("x", "y")]
+            # print(data)
             labels_df = pd.DataFrame(data, columns=columns)
-            scorer_row = ["scorer"] + [scorer] * (len(columns) - 1)
-            bodyparts_row = ["bodyparts"] + [bp for bp in keypoints for _ in ("x", "y")]
-            coords_row = ["coords"] + ["x", "y"] * len(keypoints)
-            header_df = pd.DataFrame([scorer_row, bodyparts_row, coords_row], columns=columns)
-            final_df = pd.concat([header_df, labels_df], ignore_index=True)
-            final_df.to_csv(output_dir / f"CollectedData_{scorer}.csv", index=False, header=None)
+            scorer_header = [scorer] * (len(columns) - 1)
+            bodyparts_header = [bp for bp in keypoints for _ in ("x", "y")]
+            coords_header = ["x", "y"] * len(keypoints)
+
+            # Create MultiIndex for columns
+            multi_columns = pd.MultiIndex.from_arrays(
+                [scorer_header, bodyparts_header, coords_header],
+                names=["scorer", "bodyparts", "coords"],
+            )
+
+            # Prepare data by dropping header rows
+            data_df = labels_df  # final_df.iloc[3:].copy()
+            # Generate relative frame paths
+            data_df["frame"] = data_df["frame"].apply(
+                lambda x: f"labeled-data/{video_base_name}/img{int(x):08}.png"
+            )
+            data_df.set_index("frame", inplace=True)
+
+            # Assign MultiIndex columns
+            data_df.columns = multi_columns
+
+            # Create the multilevel_df DataFrame
+            multilevel_df = data_df.astype(float)
+            multilevel_df.to_hdf(output_dir / f"CollectedData_{scorer}.h5", key="data")
 
         # Update config with additional required parameters
         config.update({
@@ -184,7 +209,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert SLEAP project to DLC project.")
     parser.add_argument("--slp_file", type=str, required=True, help="Path to the SLEAP project file (.pkg.slp)")
     parser.add_argument("--dlc_dir", type=str, required=True, help="Path to the output DLC project directory")
+    parser.add_argument("--run_dlc", type=str, required=False, help="Name of the converted project", default=1)
+
+
     args = parser.parse_args()
+    print(args)
 
     slp_path = Path(args.slp_file)
     dlc_path = Path(args.dlc_dir)
@@ -194,33 +223,39 @@ if __name__ == "__main__":
     if not dlc_path.exists():
         dlc_path.mkdir(parents=True)
 
-    convert_slep_to_dlc(slp_path, dlc_path)
+    # assert False
+    # %%
+    if args.run_dlc == "1":
+        import deeplabcut
 
-    import deeplabcut
+        # Path to your DeepLabCut project's config.yaml
+        path_config_file = str(dlc_path / "config.yaml")
+ 
+        p = deeplabcut.create_training_dataset(path_config_file)
+        # %%
+        # %%
+        train_pose_config, _, _ = deeplabcut.return_train_network_path(path_config_file)
+        print("train_pose_config", train_pose_config)
+        augs = {
+            "gaussian_noise": True,
+            "elastic_transform": True,
+            "rotation": 180,
+            "covering": True,
+            "motion_blur": True,
+        }
+        # %%
+        deeplabcut.auxiliaryfunctions.edit_config(
+            train_pose_config,
+            augs,
+        )
 
-    # Path to your DeepLabCut project's config.yaml
-    path_config_file = str(dlc_path / "config.yaml")
-
-    deeplabcut.create_training_dataset(path_config_file)
-    train_pose_config, _ = deeplabcut.return_train_network_path(config_path)
-    augs = {
-        "gaussian_noise": True,
-        "elastic_transform": True,
-        "rotation": 180,
-        "covering": True,
-        "motion_blur": True,
-    }
-    deeplabcut.auxiliaryfunctions.edit_config(
-        train_pose_config,
-        augs,
-    )
-
-    # Start training the DeepLabCut network
-    deeplabcut.train_network(path_config_file, shuffle=1)
+        # Start training the DeepLabCut network
+        deeplabcut.train_network(path_config_file, shuffle=1)
 
     # Optionally, evaluate the trained network
     # deeplabcut.evaluate_network(config_path)
 
+# %%
 
 '''
 previous code:
@@ -490,3 +525,4 @@ if not os.path.exists(slp_file):
 extract_frames_from_pkg_slp(slp_file, dlc_dir)
 
 '''
+# %%
