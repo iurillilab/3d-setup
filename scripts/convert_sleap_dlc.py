@@ -9,6 +9,7 @@ $ python convertSLP2DLC.py --slp_file /path/to/<project>.pkg.slp --dlc_dir /path
 Arguments:
 --slp_file    Path to the SLEAP project file (.pkg.slp)
 --dlc_dir     Path to the output DLC project directory
+--run_dlc     Run DLC training (1) or not (0)
  
 Once done, run deeplabcut.convertcsv2h5('config.yaml', userfeedback=False) 
 on the config file to obtain the .h5 files needed by DeepLabCut.
@@ -248,10 +249,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run_dlc",
-        type=str,
-        required=False,
-        help="Name of the converted project",
-        default=1,
+        action="store_true",
+        help="Run DLC training after conversion",
+        default=True,
     )
 
     args = parser.parse_args()
@@ -264,9 +264,11 @@ if __name__ == "__main__":
     if not dlc_path.exists():
         dlc_path.mkdir(parents=True)
 
+    convert_slep_to_dlc(slp_path, dlc_path)
+
     # assert False
     # %%
-    if args.run_dlc == "1":
+    if args.run_dlc:
         import deeplabcut
 
         # Path to your DeepLabCut project's config.yaml
