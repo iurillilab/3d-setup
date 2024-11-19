@@ -220,6 +220,13 @@ def convert_slep_to_dlc(
                 "default_augmenter": "default",
                 "snapshotindex": -1,
                 "batch_size": 8,
+                "multianimalproject": False,
+                "skeleton_color": "black",
+                "pcutoff": 0.6,
+                "dotsize": 3,
+                "alphavalue": 0.7,
+                "colormap": "jet",
+                "cropping": False,
             }
         )
 
