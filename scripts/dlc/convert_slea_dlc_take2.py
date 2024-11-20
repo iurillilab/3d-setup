@@ -56,13 +56,56 @@ for frame in slp_labels.labeled_frames:
         selected_frames.append(frame)
 
 # %%
+frame
+# %%
 bodyparts = _get_bodyparts_from_frame(selected_frames[0])
 
+all_x_arr = []
+all_y_arr = []
+all_frame_idx = []
+all_filenames = []
 for frame in tqdm(selected_frames):
     video_filename = _get_video_filename(frame.video)
+    frame_idx = frame.frame_idx
     img = _get_img_from_frame(frame)
     x_arr, y_arr = _get_points_from_frame(frame)
-    print(video_filename, img.shape, x_arr.shape, y_arr.shape)
+    all_x_arr.append(x_arr)
+    all_y_arr.append(y_arr)
+
+# %%
+# Create MultiIndex columns
+column_names = []
+for bp in bodyparts:
+    column_names.extend([(scorer, bp, 'x'), (scorer, bp, 'y')])
+columns = pd.MultiIndex.from_tuples(column_names, names=['scorer', 'bodypart', 'coord'])
+
+# Create MultiIndex rows 
+row_tuples = []
+for frame in selected_frames:
+    video_filename = _get_video_filename(frame.video)
+    frame_idx = frame.frame_idx
+    row_tuples.append(('labeled-data', video_filename, frame_idx))
+rows = pd.MultiIndex.from_tuples(row_tuples, names=['subdir', 'video_filename', 'frame_idx'])
+
+# Create data array by interleaving x and y coordinates
+data = []
+for x_arr, y_arr in zip(all_x_arr, all_y_arr):
+    frame_data = []
+    for x, y in zip(x_arr, y_arr):
+        frame_data.extend([x, y])
+    data.append(frame_data)
+
+# Create DataFrame
+df = pd.DataFrame(data, index=rows, columns=columns)
+first_video_filename = df.index.get_level_values('video_filename')[0]
+df_sub = df[df.index.get_level_values('video_filename') == first_video_filename]
+
+# drop rows index names
+df_sub.index.names = [None, None, None]
+df_sub
+
+# filter entries for the first movie filename:
+
 
 
 # %%
@@ -72,11 +115,7 @@ plt.figure()
 plt.imshow(img)
 coords = frame.numpy()[0, :, :]
 plt.scatter(coords[:, 0], coords[:, 1], c='red', s=4)
-# print(len(img), img[0].shape)
-# instances = frame.instances
-# img.shape, instances.shape
-# %%
-# %%
+
 base_output_dir = dlc_dir
 file_path = slp_file
 
@@ -116,7 +155,8 @@ config = {'Task': project_name,
             'y2': 624,
             'corner2move2': [50, 50],
             'move2corner': True,
-            'SuperAnimalConversionTables': None
+            'SuperAnimalConversionTables': None,
+            "multianimalproject": False,
             }
     
 # %%
