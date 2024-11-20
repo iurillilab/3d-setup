@@ -196,10 +196,15 @@ def convert_slep_to_dlc(
             # Prepare data by dropping header rows
             data_df = labels_df  # final_df.iloc[3:].copy()
             # Generate relative frame paths
+            data_df["maindir"] = "labeled-data"
+            data_df["subdir"] = video_base_name
             data_df["frame"] = data_df["frame"].apply(
-                lambda x: f"labeled-data/{video_base_name}/img{int(x):08}.png"
+                lambda x: f"img{int(x):08}.png"
             )
-            data_df.set_index("frame", inplace=True)
+            # set as multiindex the sequence of maindir, subdir, frame, without keeping the name of the columns
+            data_df = data_df.set_index(["maindir", "subdir", "frame"], drop=True)
+            # set the multiindex names to None
+            data_df.index.names = [None, None, None]
 
             # Assign MultiIndex columns
             data_df.columns = multi_columns
@@ -207,6 +212,14 @@ def convert_slep_to_dlc(
             # Create the multilevel_df DataFrame
             multilevel_df = data_df.astype(float)
             multilevel_df.to_hdf(output_dir / f"CollectedData_{scorer}.h5", key="data")
+            # Flatten the MultiIndex index and drop the names of the levels
+            # multilevel_df = multilevel_df.reset_index(names=None)
+
+            # Write to CSV while keeping the column MultiIndex
+            multilevel_df.to_csv(output_dir / f"CollectedData_{scorer}.csv", index=True, header=True)
+
+            
+            # multilevel_df.to_csv(output_dir / f"CollectedData_{scorer}.csv", index=True, header=True, index_label=False)
 
         # Update config with additional required parameters
         config.update(
@@ -251,7 +264,7 @@ if __name__ == "__main__":
         "--run_dlc",
         action="store_true",
         help="Run DLC training after conversion",
-        default=True,
+        default=False,
     )
 
     args = parser.parse_args()

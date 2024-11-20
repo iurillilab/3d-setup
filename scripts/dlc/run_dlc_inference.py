@@ -26,10 +26,16 @@ args = parser.parse_args()
 
 videos_dir = Path(args.videos_dir)
 path_config_file = args.config_file
-videos_pattern_to_match = "*.avi"
+videos_pattern_to_match = "*mirror*.mp4"
 
-videofile_path = [str(filename) for filename in (videos_dir.glob(videos_pattern_to_match))]
-deeplabcut.analyze_videos(path_config_file, videofile_path)
+videofile_path_list = [str(filename) for filename in (videos_dir.rglob(videos_pattern_to_match))]
 
-if args.make_labeled_video:
-    deeplabcut.create_labeled_video(path_config_file, videofile_path)
+print("analysing videos: ")
+for video in videofile_path_list:
+    print("  - ", video)
+
+for video in videofile_path_list:
+    deeplabcut.analyze_videos(path_config_file, [video], videotype=".mp4")
+
+    if args.make_labeled_video:
+        deeplabcut.create_labeled_video(path_config_file, [video])
