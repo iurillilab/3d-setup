@@ -25,8 +25,29 @@ scorer = "me"
 slp_labels = load_file(str(slp_file))
 # dir(slp_labels
 frame = slp_labels.labeled_frames[0]
-dir(frame)
 frame.frame_idx, frame.n_user_instances, frame.n_predicted_instances
+
+def _get_video_filename(video_obj):
+    video_path = video_obj.backend.source_video_available.backend.filename
+    video_filename = Path(video_path).name
+    return video_filename
+
+def _get_img_from_frame(frame):
+    img = np.array(frame.image)
+    return img
+
+def _get_bodyparts_from_frame(frame):
+    bodyparts = [node.name for node in frame.user_instances[0].skeleton.nodes]
+    return bodyparts
+
+def _get_points_from_frame(frame):
+    points = frame.user_instances[0].points
+    x_arr = np.array([p.x for p in points])
+    y_arr = np.array([p.y for p in points])
+    visible_arr = np.array([p.visible for p in points])
+    x_arr[~visible_arr] = np.nan
+    y_arr[~visible_arr] = np.nan
+    return x_arr, y_arr
 
 # %%
 selected_frames = []
@@ -35,27 +56,14 @@ for frame in slp_labels.labeled_frames:
         selected_frames.append(frame)
 
 # %%
-frame = selected_frames[-1]
+bodyparts = _get_bodyparts_from_frame(selected_frames[0])
 
-# get the image:
-img = np.array(frame.image)
+for frame in tqdm(selected_frames):
+    video_filename = _get_video_filename(frame.video)
+    img = _get_img_from_frame(frame)
+    x_arr, y_arr = _get_points_from_frame(frame)
+    print(video_filename, img.shape, x_arr.shape, y_arr.shape)
 
-# get the user defined instance:
-instance = frame.user_instances[0]
-points = instance.points
-x_arr = np.array([p.x for p in points])
-y_arr = np.array([p.y for p in points])
-visible_arr = np.array([p.visible for p in points])
-x_arr[~visible_arr] = np.nan
-y_arr[~visible_arr] = np.nan
-bodyparts = [node.name for node in instance.skeleton.nodes]
-
-# plot bodyparts with names on the frame:
-plt.figure()
-plt.imshow(img)
-plt.scatter(x_arr, y_arr, c='red', s=4)
-for i, bp in enumerate(bodyparts):
-    plt.text(x_arr[i], y_arr[i], bp, color='red', fontsize=6)
 
 # %%
 
