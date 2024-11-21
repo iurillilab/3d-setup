@@ -26,7 +26,7 @@ args = parser.parse_args()
 
 videos_dir = Path(args.videos_dir)
 path_config_file = args.config_file
-videos_pattern_to_match = "*.avi"
+videos_pattern_to_match = "*.mp4"
 
 videofile_path = [
     str(filename) for filename in (videos_dir.glob(videos_pattern_to_match))
