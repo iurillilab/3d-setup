@@ -10,12 +10,11 @@ from movement.io.load_poses import from_file
 from napari_video.napari_video import VideoReaderNP
 
 from pathlib import Path
-dir(napari_video.napari_hook_implementation)
 # %%
 data_path = Path("/Users/vigji/Desktop/multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
-video_path = data_path / "multicam_video_2024-07-24T10_04_55_central.avi.mp4"
-slp_inference_path = data_path / "multicam_video_2024-07-24T10_04_55_cropped_20241104101620.slp"
-dlc_inference_path = data_path / "multicam_video_2024-07-24T10_04_55_central.aviDLC_resnet50_labels.v001.pkg_converted2024-11-21shuffle1_50000.h5"
+video_path = data_path / "multicam_video_2024-07-24T10_04_55_mirror-bottom.avi.mp4"
+slp_inference_path = next(video_path.parent.glob(f"{video_path.stem}*.slp"))  # data_path / "multicam_video_2024-07-24T10_04_55_cropped_20241104101620.slp"
+dlc_inference_path = next(video_path.parent.glob(f"{video_path.stem}*.h5"))  # data_path / "multicam_video_2024-07-24T10_04_55_central.aviDLC_resnet50_labels.v001.pkg_converted2024-11-21shuffle1_50000.h5"
 
 ds_sleap = from_file(slp_inference_path, source_software="SLEAP")
 ds_dlc = from_file(dlc_inference_path, source_software="DeepLabCut")
@@ -24,14 +23,14 @@ ds_dlc = from_file(dlc_inference_path, source_software="DeepLabCut")
 # %%
 viewer = napari.Viewer()  #ndisplay=3)
 viewer.add_image(VideoReaderNP(str(video_path)))
-# %%
+
 for ds, ds_name in [(ds_sleap, "SLEAP"), (ds_dlc, "DeepLabCut")]:
-    ds = filter_by_confidence(ds, confidence=0.6, print_report=False)
+    ds = filter_by_confidence(ds, confidence=0.9, print_report=False)
     ds = interpolate_over_time(ds, method="linear", print_report=False)
 
     track, props = ds_to_napari_tracks(ds)
 
-    points_style = PointsStyle(name=f"Keypoints - {ds_name}", properties=props, size=3)
+    points_style = PointsStyle(name=f"Keypoints - {ds_name}", properties=props, size=7)
     points_style.set_color_by(prop="keypoint", cmap="turbo")
 
     tracks_props = columns_to_categorical_codes(props, ["individual", "keypoint"])
@@ -39,7 +38,7 @@ for ds, ds_name in [(ds_sleap, "SLEAP"), (ds_dlc, "DeepLabCut")]:
     tracks_style.set_color_by(prop="keypoint", cmap="turbo")
 
     viewer.add_tracks(track, **tracks_style.as_kwargs())
-    viewer.add_points(track[:, 1:], size=4)  # **points_style.as_kwargs())
+    viewer.add_points(track[:, 1:], **points_style.as_kwargs())
     viewer.add_shapes
 
 track.shape
