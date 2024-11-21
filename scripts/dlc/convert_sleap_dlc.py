@@ -17,41 +17,42 @@ from sleap.io.dataset import load_file
 
 def _write_config(project_name, scorer, output_dir, bodyparts, skeleton):
     # Modify here to customize config.yaml
-    config = {'Task': project_name,
-            'scorer': scorer,
-            'date': time.strftime("%Y-%m-%d"),
-            'identity': None,
-            'project_path': output_dir,
-            'engine': 'pytorch',
-            'video_sets': {},
-            'start': 0,
-            'stop': 1,
-            'numframes2pick': 20,
-            'skeleton_color': 'black',
-            'pcutoff': 0.6,
-            'dotsize': 12,
-            'alphavalue': 0.6,
-            'colormap': 'rainbow',
-            'TrainingFraction': [0.95],
-            'iteration': 0,
-            'default_net_type': 'resnet_50',
-            'default_augmenter': 'default',
-            'snapshotindex': -1,
-            'detector_snapshotindex': -1,
-            'batch_size': 8,
-            'detector_batch_size': 1,
-            'cropping': False,
-            'x1': 0,
-            'x2': 640,
-            'y1': 277,
-            'y2': 624,
-            'corner2move2': [50, 50],
-            'move2corner': True,
-            'SuperAnimalConversionTables': None,
-            "multianimalproject": False,
-            'skeleton': skeleton,
-            'bodyparts': bodyparts
-            }
+    config = {
+        "Task": project_name,
+        "scorer": scorer,
+        "date": time.strftime("%Y-%m-%d"),
+        "identity": None,
+        "project_path": output_dir,
+        "engine": "pytorch",
+        "video_sets": {},
+        "start": 0,
+        "stop": 1,
+        "numframes2pick": 20,
+        "skeleton_color": "black",
+        "pcutoff": 0.6,
+        "dotsize": 12,
+        "alphavalue": 0.6,
+        "colormap": "rainbow",
+        "TrainingFraction": [0.95],
+        "iteration": 0,
+        "default_net_type": "resnet_50",
+        "default_augmenter": "default",
+        "snapshotindex": -1,
+        "detector_snapshotindex": -1,
+        "batch_size": 8,
+        "detector_batch_size": 1,
+        "cropping": False,
+        "x1": 0,
+        "x2": 640,
+        "y1": 277,
+        "y2": 624,
+        "corner2move2": [50, 50],
+        "move2corner": True,
+        "SuperAnimalConversionTables": None,
+        "multianimalproject": False,
+        "skeleton": skeleton,
+        "bodyparts": bodyparts,
+    }
 
     # save DLC config.yaml
     print(f"Saving config.yaml to {output_dir}")
@@ -64,13 +65,16 @@ def _get_video_filename(video_obj):
     video_filename = Path(video_path).stem
     return video_filename
 
+
 def _get_img_from_frame(frame):
     img = np.array(frame.image)
     return img
 
+
 def _get_bodyparts_from_frame(frame):
     bodyparts = [node.name for node in frame.user_instances[0].skeleton.nodes]
     return bodyparts
+
 
 def _get_points_from_frame(frame):
     points = frame.user_instances[0].points
@@ -82,16 +86,24 @@ def _get_points_from_frame(frame):
     return x_arr, y_arr
 
 
-def _create_labels_df(bodyparts, video_filenames, frame_names, all_x_arr, all_y_arr, scorer_name):
+def _create_labels_df(
+    bodyparts, video_filenames, frame_names, all_x_arr, all_y_arr, scorer_name
+):
     column_names = []
     for bp in bodyparts:
-        column_names.extend([(scorer_name, bp, 'x'), (scorer_name, bp, 'y')])
-    columns = pd.MultiIndex.from_tuples(column_names, names=['scorer', 'bodypart', 'coord'])
+        column_names.extend([(scorer_name, bp, "x"), (scorer_name, bp, "y")])
+    columns = pd.MultiIndex.from_tuples(
+        column_names, names=["scorer", "bodypart", "coord"]
+    )
 
-    # Create MultiIndex rows 
-    row_tuples = [("labeled-data", video_filename, frame_name) 
-        for video_filename, frame_name in zip(video_filenames, frame_names)]
-    rows = pd.MultiIndex.from_tuples(row_tuples, names=['subdir', 'video_filename', 'frame_idx'])
+    # Create MultiIndex rows
+    row_tuples = [
+        ("labeled-data", video_filename, frame_name)
+        for video_filename, frame_name in zip(video_filenames, frame_names)
+    ]
+    rows = pd.MultiIndex.from_tuples(
+        row_tuples, names=["subdir", "video_filename", "frame_idx"]
+    )
 
     # Create data array by interleaving x and y coordinates
     data = []
@@ -105,12 +117,13 @@ def _create_labels_df(bodyparts, video_filenames, frame_names, all_x_arr, all_y_
     return pd.DataFrame(data, index=rows, columns=columns)
 
 
-def convert_slep_to_dlc(sleap_file, output_dir, project_name=None, scorer='SLEAP-annotated'):
-    
+def convert_slep_to_dlc(
+    sleap_file, output_dir, project_name=None, scorer="SLEAP-annotated"
+):
     sleap_file = Path(sleap_file)
     output_dir = Path(output_dir)
     assert sleap_file.exists(), f"Cannot find SLEAP file: {sleap_file}"
-    
+
     if project_name is None:
         project_name = sleap_file.stem + "_converted"
 
@@ -145,7 +158,7 @@ def convert_slep_to_dlc(sleap_file, output_dir, project_name=None, scorer='SLEAP
         # assert bodyparts == bodyparts
         img = _get_img_from_frame(frame)
         x_arr, y_arr = _get_points_from_frame(frame)
-        
+
         all_x_arr.append(x_arr)
         all_y_arr.append(y_arr)
         frame_name = f"img{str(frame.frame_idx).zfill(8)}.png"
@@ -160,19 +173,25 @@ def convert_slep_to_dlc(sleap_file, output_dir, project_name=None, scorer='SLEAP
         cv2.imwrite(str(frames_folder / frame_name), img)
 
     # Create dataframe of labels
-    df = _create_labels_df(bodyparts, video_filenames, frame_names, all_x_arr, all_y_arr, scorer)
+    df = _create_labels_df(
+        bodyparts, video_filenames, frame_names, all_x_arr, all_y_arr, scorer
+    )
 
     # Loop over video_filenames and save relative labels dataframes:
-    for video_filename in df.index.get_level_values('video_filename').unique():
+    for video_filename in df.index.get_level_values("video_filename").unique():
         video_folder = labels_folder / video_filename
-        df_sub = df[df.index.get_level_values('video_filename') == video_filename].copy()
+        df_sub = df[
+            df.index.get_level_values("video_filename") == video_filename
+        ].copy()
 
         # drop rows index names
         df_sub.index.names = [None, None, None]
-        
+
         # Save to h5 and csv:
         # df_sub.to_hdf(video_folder / f"CollectedData_{scorer}.h5", key="data")
-        df_sub.to_csv(video_folder / f"CollectedData_{scorer}.csv", index=True, header=True)
+        df_sub.to_csv(
+            video_folder / f"CollectedData_{scorer}.csv", index=True, header=True
+        )
 
     _write_config(project_name, scorer, output_dir, bodyparts, skeleton)
 
