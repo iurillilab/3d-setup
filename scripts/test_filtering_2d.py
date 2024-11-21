@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+    """
+    Code taken from https://github.com/lambdaloop/anipose/blob/master/anipose/filter_pose.py
+    to avoid the whole anipose package dependency, all credit goes to the original authors.
+    """
+
 from tqdm import tqdm, trange
 import os.path, os
 import numpy as np
