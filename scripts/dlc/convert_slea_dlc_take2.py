@@ -18,118 +18,27 @@ from matplotlib import pyplot as plt
 
 # def extract_frames_from_pkg_slp(file_path, base_output_dir, project_name='converted_project', scorer='me'):
 slp_file = Path("/Users/vigji/Downloads/labels.v001.pkg.slp")
-dlc_dir = Path("/Users/vigji/Desktop/converted_from_sleap/test7")
+output_dir = Path("/Users/vigji/Desktop/converted_from_sleap/test9")
 project_name = "test4"
 scorer = "me"
-# %%
+
 slp_labels = load_file(str(slp_file))
-# dir(slp_labels
-frame = slp_labels.labeled_frames[0]
-frame.frame_idx, frame.n_user_instances, frame.n_predicted_instances
 
-def _get_video_filename(video_obj):
-    video_path = video_obj.backend.source_video_available.backend.filename
-    video_filename = Path(video_path).name
-    return video_filename
+labels_folder = output_dir / "labeled-data"
+videos_folder = output_dir / "videos"
+labels_folder.mkdir(exist_ok=True, parents=True)
+videos_folder.mkdir(exist_ok=True, parents=True)
 
-def _get_img_from_frame(frame):
-    img = np.array(frame.image)
-    return img
+# Read skeleton and bodyparts from SLEAP project:
+bodyparts = [node.name for node in slp_labels.skeleton.nodes]
+skeleton = [[node.name for node in edge] for edge in slp_labels.skeleton.edges]
 
-def _get_bodyparts_from_frame(frame):
-    bodyparts = [node.name for node in frame.user_instances[0].skeleton.nodes]
-    return bodyparts
-
-def _get_points_from_frame(frame):
-    points = frame.user_instances[0].points
-    x_arr = np.array([p.x for p in points])
-    y_arr = np.array([p.y for p in points])
-    visible_arr = np.array([p.visible for p in points])
-    x_arr[~visible_arr] = np.nan
-    y_arr[~visible_arr] = np.nan
-    return x_arr, y_arr
-
-# %%
-selected_frames = []
-for frame in slp_labels.labeled_frames:
-    if frame.n_user_instances > 0:
-        selected_frames.append(frame)
-
-# %%
-frame
-# %%
-bodyparts = _get_bodyparts_from_frame(selected_frames[0])
-
-all_x_arr = []
-all_y_arr = []
-all_frame_idx = []
-all_filenames = []
-for frame in tqdm(selected_frames):
-    video_filename = _get_video_filename(frame.video)
-    frame_idx = frame.frame_idx
-    img = _get_img_from_frame(frame)
-    x_arr, y_arr = _get_points_from_frame(frame)
-    all_x_arr.append(x_arr)
-    all_y_arr.append(y_arr)
-
-# %%
-# Create MultiIndex columns
-column_names = []
-for bp in bodyparts:
-    column_names.extend([(scorer, bp, 'x'), (scorer, bp, 'y')])
-columns = pd.MultiIndex.from_tuples(column_names, names=['scorer', 'bodypart', 'coord'])
-
-# Create MultiIndex rows 
-row_tuples = []
-for frame in selected_frames:
-    video_filename = _get_video_filename(frame.video)
-    frame_idx = frame.frame_idx
-    row_tuples.append(('labeled-data', video_filename, frame_idx))
-rows = pd.MultiIndex.from_tuples(row_tuples, names=['subdir', 'video_filename', 'frame_idx'])
-
-# Create data array by interleaving x and y coordinates
-data = []
-for x_arr, y_arr in zip(all_x_arr, all_y_arr):
-    frame_data = []
-    for x, y in zip(x_arr, y_arr):
-        frame_data.extend([x, y])
-    data.append(frame_data)
-
-# Create DataFrame
-df = pd.DataFrame(data, index=rows, columns=columns)
-first_video_filename = df.index.get_level_values('video_filename')[0]
-df_sub = df[df.index.get_level_values('video_filename') == first_video_filename]
-
-# drop rows index names
-df_sub.index.names = [None, None, None]
-df_sub
-
-# filter entries for the first movie filename:
-
-
-
-# %%
-
-# %%
-plt.figure()
-plt.imshow(img)
-coords = frame.numpy()[0, :, :]
-plt.scatter(coords[:, 0], coords[:, 1], c='red', s=4)
-
-base_output_dir = dlc_dir
-file_path = slp_file
-
-#create directories
-base_output_dir = Path(base_output_dir)
-base_output_dir.mkdir(parents=True, exist_ok=True)
-(base_output_dir / "labeled-data").mkdir(exist_ok=True)
-(base_output_dir / "videos").mkdir(exist_ok=True)
 
 config = {'Task': project_name,
             'scorer': scorer,
             'date': time.strftime("%Y-%m-%d"),
             'identity': None,
-            'project_path': base_output_dir,
+            'project_path': output_dir,
             'engine': 'pytorch',
             'video_sets': {},
             'start': 0,
@@ -157,7 +66,127 @@ config = {'Task': project_name,
             'move2corner': True,
             'SuperAnimalConversionTables': None,
             "multianimalproject": False,
+            'skeleton': skeleton,
+            'bodyparts': bodyparts
             }
+
+
+frame = slp_labels.labeled_frames[0]
+frame.frame_idx, frame.n_user_instances, frame.n_predicted_instances
+
+def _get_video_filename(video_obj):
+    video_path = video_obj.backend.source_video_available.backend.filename
+    video_filename = Path(video_path).stem
+    return video_filename
+
+def _get_img_from_frame(frame):
+    img = np.array(frame.image)
+    return img
+
+def _get_bodyparts_from_frame(frame):
+    bodyparts = [node.name for node in frame.user_instances[0].skeleton.nodes]
+    return bodyparts
+
+def _get_points_from_frame(frame):
+    points = frame.user_instances[0].points
+    x_arr = np.array([p.x for p in points])
+    y_arr = np.array([p.y for p in points])
+    visible_arr = np.array([p.visible for p in points])
+    x_arr[~visible_arr] = np.nan
+    y_arr[~visible_arr] = np.nan
+    return x_arr, y_arr
+
+
+selected_frames = []
+for frame in slp_labels.labeled_frames:
+    if frame.n_user_instances > 0:
+        selected_frames.append(frame)
+
+bodyparts = [node.name for node in slp_labels.skeleton.nodes]
+skeleton = [[node.name for node in edge] for edge in slp_labels.skeleton.edges]
+
+all_x_arr = []
+all_y_arr = []
+frame_names = []
+video_filenames = []
+for frame in tqdm(selected_frames, desc="Processing labelled frames:"):
+    bodyparts = _get_bodyparts_from_frame(frame)
+    # assert bodyparts == bodyparts
+    img = _get_img_from_frame(frame)
+    x_arr, y_arr = _get_points_from_frame(frame)
+    
+    all_x_arr.append(x_arr)
+    all_y_arr.append(y_arr)
+    frame_name = f"img{str(frame.frame_idx).zfill(8)}.png"
+
+    video_filename = _get_video_filename(frame.video)
+    frame_names.append(frame_name)
+    video_filenames.append(video_filename)
+
+    # Save frame in labeled-data folder:
+    frames_folder = labels_folder / video_filename
+    frames_folder.mkdir(exist_ok=True, parents=True)
+    cv2.imwrite(str(frames_folder / frame_name), img)
+
+# Create dataframe of labels:
+# Create MultiIndex columns
+column_names = []
+for bp in bodyparts:
+    column_names.extend([(scorer, bp, 'x'), (scorer, bp, 'y')])
+columns = pd.MultiIndex.from_tuples(column_names, names=['scorer', 'bodypart', 'coord'])
+
+# Create MultiIndex rows 
+row_tuples = [("labeled-data", video_filename, frame_name) 
+                for video_filename, frame_name in zip(video_filenames, frame_names)]
+rows = pd.MultiIndex.from_tuples(row_tuples, names=['subdir', 'video_filename', 'frame_idx'])
+
+# Create data array by interleaving x and y coordinates
+data = []
+for x_arr, y_arr in zip(all_x_arr, all_y_arr):
+    frame_data = []
+    for x, y in zip(x_arr, y_arr):
+        frame_data.extend([x, y])
+    data.append(frame_data)
+
+# Create DataFrame
+df = pd.DataFrame(data, index=rows, columns=columns)
+
+# Loop over video_filenames:
+for video_filename in df.index.get_level_values('video_filename').unique():
+    video_folder = labels_folder / video_filename
+    df_sub = df[df.index.get_level_values('video_filename') == video_filename].copy()
+
+    # drop rows index names
+    df_sub.index.names = [None, None, None]
+    
+    # Save to h5 and csv:
+    df_sub.to_hdf(video_folder / f"CollectedData_{scorer}.h5", key="data")
+    df_sub.to_csv(video_folder / f"CollectedData_{scorer}.csv", index=True, header=True)
+
+
+
+# save DLC config.yaml
+with open(dlc_dir / "config.yaml", "w") as yaml_file:
+    yaml.dump(config, yaml_file, default_flow_style=False)
+
+
+# %%
+
+# %%
+plt.figure()
+plt.imshow(img)
+coords = frame.numpy()[0, :, :]
+plt.scatter(coords[:, 0], coords[:, 1], c='red', s=4)
+
+base_output_dir = dlc_dir
+file_path = slp_file
+
+#create directories
+base_output_dir = Path(base_output_dir)
+base_output_dir.mkdir(parents=True, exist_ok=True)
+(base_output_dir / "labeled-data").mkdir(exist_ok=True)
+(base_output_dir / "videos").mkdir(exist_ok=True)
+
     
 # %%
 #parse .slp file
