@@ -27,10 +27,11 @@ def _write_config(project_name, scorer, output_dir, bodyparts, skeleton):
         "video_sets": {},
         "start": 0,
         "stop": 1,
+        
         "numframes2pick": 20,
         "skeleton_color": "black",
         "pcutoff": 0.6,
-        "dotsize": 12,
+        "dotsize": 5,
         "alphavalue": 0.6,
         "colormap": "rainbow",
         "TrainingFraction": [0.95],
@@ -93,7 +94,7 @@ def _create_labels_df(
     for bp in bodyparts:
         column_names.extend([(scorer_name, bp, "x"), (scorer_name, bp, "y")])
     columns = pd.MultiIndex.from_tuples(
-        column_names, names=["scorer", "bodypart", "coord"]
+        column_names, names=["scorer", "bodyparts", "coord"]
     )
 
     # Create MultiIndex rows
@@ -187,11 +188,11 @@ def convert_slep_to_dlc(
         # drop rows index names
         df_sub.index.names = [None, None, None]
 
-        # Save to h5 and csv:
-        # df_sub.to_hdf(video_folder / f"CollectedData_{scorer}.h5", key="data")
+        # Save to csv:
         df_sub.to_csv(
             video_folder / f"CollectedData_{scorer}.csv", index=True, header=True
         )
+        df_sub.to_pickle(video_folder / f"CollectedData_{scorer}.pkl")
 
     _write_config(project_name, scorer, output_dir, bodyparts, skeleton)
 

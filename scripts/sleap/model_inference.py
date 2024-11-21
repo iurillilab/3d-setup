@@ -4,8 +4,21 @@ import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
-
 import numpy as np
+
+
+
+
+# SLEAP models:
+
+
+side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
+bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161"
+
+
+
+
+
 
 # function to iterate through all the mice videos and select the paths of all videos except the bottom one.
 
@@ -16,7 +29,8 @@ def get_video_paths(main_path):
     It selects the video output form scrip for cropping them, (.avi.avi), and it exlucdes the central one.
     Output: video_paths: list: list of paths to all the videos in the main folder
     """
-    video_paths = []
+    side_paths = []
+    bottom_paths = []
     p = pathlib.Path(main_path)
 
     for video in p.rglob("*"):
@@ -27,8 +41,10 @@ def get_video_paths(main_path):
             and video.name.endswith(".mp4")  # sub mp4 with avi.avi
             and "central" not in video.name
         ):
-            video_paths.append(str(video))
-    return video_paths
+            side_paths.append(str(video))
+        else:
+            bottom_paths.append(str(video))
+    return side_paths, bottom_paths
 
 
 # function that takes video paths and encode them and convert them into mp4 format to run inference using ffmpeg
@@ -54,7 +70,7 @@ def get_video_paths(main_path):
 
 
 # function that iterates thorugh all the video paths and run model inference on them and save the results in a specific folder.
-def run_inference(enc_vid):
+def run_inference(enc_vid, model):
     """
     Input: video_paths: list: list of paths to all the videos in the main folder
     It runs the model inference on the encoded videos and saves the results in a specific folder.
@@ -72,13 +88,14 @@ def run_inference(enc_vid):
 
 
 if __name__ == "__main__":
-    # GEN_VIDEO_PATH = r'D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting'
     GEN_VIDEO_PATH = (
         r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\m_test"
     )
-    model = r"D:\SLEAP_models\test\models\241007_120850.single_instance.n=500"
+    side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
+    bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161"
 
-    video_paths = get_video_paths(GEN_VIDEO_PATH)
+    side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
     # encoded_paths = encode_and_convert(video_paths)
-    run_inference(video_paths)
+    run_inference(side_paths, side_model)
+    run_inference(bottom_paths, bottom_model)
     print("Inference done!")
