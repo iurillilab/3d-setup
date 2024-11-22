@@ -8,10 +8,11 @@ from movement_napari.utils import columns_to_categorical_codes
 from movement_napari.convert import ds_to_napari_tracks
 from movement.io.load_poses import from_file
 from napari_video.napari_video import VideoReaderNP
-
+from matplotlib import pyplot as plt
 from pathlib import Path
 # %%
-data_path = Path("/Users/vigji/Desktop/multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
+# data_path = Path("/Users/vigji/Desktop/multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
+data_path = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\sample_video_for_triangulation\multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
 video_path = data_path / "multicam_video_2024-07-24T10_04_55_mirror-bottom.avi.mp4"
 slp_inference_path = next(video_path.parent.glob(f"{video_path.stem}*.slp"))  # data_path / "multicam_video_2024-07-24T10_04_55_cropped_20241104101620.slp"
 dlc_inference_path = next(video_path.parent.glob(f"{video_path.stem}*.h5"))  # data_path / "multicam_video_2024-07-24T10_04_55_central.aviDLC_resnet50_labels.v001.pkg_converted2024-11-21shuffle1_50000.h5"
@@ -19,7 +20,14 @@ dlc_inference_path = next(video_path.parent.glob(f"{video_path.stem}*.h5"))  # d
 ds_sleap = from_file(slp_inference_path, source_software="SLEAP")
 ds_dlc = from_file(dlc_inference_path, source_software="DeepLabCut")
 
-
+# %%
+nose_coords = ds_dlc.position.sel(individuals="individual_0", keypoints="nose", drop=True)
+nose_conf = ds_dlc.confidence.sel(individuals="individual_0", keypoints="nose", drop=True)
+ds_dlc.position.to_numpy()
+# %%
+plt.figure()
+plt.scatter(nose_coords.sel(space="x"), nose_coords.sel(space="y"), s=1, c=nose_conf, cmap="turbo")
+nose_coords.sel(space="x").shape
 # %%
 viewer = napari.Viewer()  #ndisplay=3)
 viewer.add_image(VideoReaderNP(str(video_path)))
