@@ -40,9 +40,34 @@ if plots:
     plt.show()
 
 # %%
+def movement_to_anipose(mov_ds):
+    position_vals = mov_ds.position.transpose("time", "keypoints", "individuals", "space").values
+    confidence_vals = mov_ds.confidence.transpose("time", "keypoints", "individuals").values
+    test = np.concatenate([position_vals, confidence_vals[:, :, :, None]], axis=3)
+    metadata = {
+        'bodyparts': ds_dlc.coords["keypoints"].values,
+        'scorer': ds_dlc.attrs["source_software"],
+        'index': mov_ds.coords["time"].values
+    }
+    return test, metadata
+
+def anipose_to_movement(data, source_ds):
+    """Convert anipose format back to movement format"""
+    ds = source_ds.copy()
+    # data that are 0 alongh both last dim values are set to nan
+    print(np.sum(np.all(data == 0, axis=-1)))
+    data[np.all(data == 0, axis=-1)] = np.nan
+
+    ds.position.values = data[:, np.newaxis, :, :]
+    
+    return ds
+
 ds_to_filter = ds_dlc
 points, metadata = load_pose_2d_movement(ds_to_filter)
 
+# %%
+# ============================================
+# Viterbi filter
 config = {
     "filter": {
         "score_threshold": 0.5,
@@ -59,20 +84,9 @@ if __name__ == "__main__":
 print(viterbi_points.shape, viterbi_scores.shape)
 
 # %%
-def anipose_to_movement(data, source_ds):
-    """Convert anipose format back to movement format"""
-    ds = source_ds.copy()
-    # data that are 0 alongh both last dim values are set to nan
-    print(np.sum(np.all(data == -1, axis=-1)))
-    data[np.all(data == -1, axis=-1)] = np.nan
-
-    ds.position.values = data[:, np.newaxis, :, :]
-    
-    return ds
-
 ds_filtered = anipose_to_movement(viterbi_points, ds_to_filter)
-# print(np.sum((viterbi_points[:, :, 0] == 0) & (viterbi_points[:, :, 1] == 0)))
-# print(np.min(ds_filtered.position.sel(keypoints="nose", individuals="individual_0").values[:, 0]))
+print(np.sum((viterbi_points[:, :, 0] == 0) & (viterbi_points[:, :, 1] == 0)))
+print(np.min(ds_filtered.position.sel(keypoints="nose", individuals="individual_0").values[:, 0]))
 # %%
 plots = True
 if plots:
@@ -84,5 +98,16 @@ if plots:
         ocp.color_plot(to_plot.sel(space="x"), -to_plot.sel(space="y"), marker="o",
         lw=1, c=confidence, cmap=cmap, markersize=2)
     plt.show()
+
+# %%
+# ============================================
+# Autoencoder filter
+# ============================================
+config = {
+    "filter": {
+        "autoencoder_points_path": "/Users/vigji/Desktop/multicam_video_2024-07-24T10_04_55_cropped_20241104101620/autoencoder_points_model.pkl"
+    }
+}
+autoencoder_points = af2d.filter_pose_autoencoder_points(config, points, metadata["bodyparts"])
 
 # %%
