@@ -2,7 +2,7 @@
 
     """
     Code taken from https://github.com/lambdaloop/anipose/blob/master/anipose/filter_pose.py
-    to avoid the whole anipose package dependency, all credit goes to the original authors.
+    to avoid the whole anipose package dependency, all credit goes to the original authors. 
     """
 
 from tqdm import tqdm, trange
