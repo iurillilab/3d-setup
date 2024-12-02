@@ -1,10 +1,13 @@
 # %%
-# %matplotlib widget
-from anipose_filtering_2d import *
+
+import anipose_filtering_2d as af2d
 from movement.io.load_poses import from_file
 from matplotlib import pyplot as plt
 from pathlib import Path
 import ocplot as ocp
+import numpy as np
+
+plots = False
 
 # %%
 data_path = Path("/Users/vigji/Desktop/multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
@@ -26,39 +29,17 @@ ds_dlc = from_file(dlc_inference_path, source_software="DeepLabCut")
 # from napari_video.napari_video import VideoReaderNP
 
 # %%
-t_slice = slice(500, 1000)
-plt.figure()
-for ds, cmap in zip([ds_sleap, ds_dlc], ["Reds_r", "Blues_r"]):
-    to_plot = ds.position.sel(keypoints="nose", individuals="individual_0", time=t_slice, drop=True)
-    confidence = ds.confidence.sel(keypoints="nose", individuals="individual_0", time=t_slice, drop=True)
-    ocp.color_plot(to_plot.sel(space="x"), -to_plot.sel(space="y"), marker="o",
-    lw=1, c=confidence, cmap=cmap, markersize=2)
+if plots:
+    t_slice = slice(500, 1000)
+    plt.figure()
+    for ds, cmap in zip([ds_sleap, ds_dlc], ["Reds_r", "Blues_r"]):
+        to_plot = ds.position.sel(keypoints="nose", individuals="individual_0", time=t_slice, drop=True)
+        confidence = ds.confidence.sel(keypoints="nose", individuals="individual_0", time=t_slice, drop=True)
+        ocp.color_plot(to_plot.sel(space="x"), -to_plot.sel(space="y"), marker="o",
+        lw=1, c=confidence, cmap=cmap, markersize=2)
     plt.show()
 
 # %%
-to_plot.coords["time"].values
-# %%
-def load_pose_2d(fname):
-    data_orig = pd.read_hdf(fname)
-    scorer = data_orig.columns.levels[0][0]
-    data = data_orig.loc[:, scorer]
-
-    bp_index = data.columns.names.index('bodyparts')
-    coord_index = data.columns.names.index('coords')
-    bodyparts = list(data.columns.get_level_values(bp_index).unique())
-    n_possible = len(data.columns.levels[coord_index])//3
-
-    n_frames = len(data)
-    n_joints = len(bodyparts)
-    test = np.array(data).reshape(n_frames, n_joints, n_possible, 3)
-
-    metadata = {
-        'bodyparts': bodyparts,
-        'scorer': ds_dlc.attrs["source_software"],
-        'index': data.index
-    }
-
-    return test, metadata
 
 def load_pose_2d_movement(mov_ds):
     position_vals = mov_ds.position.transpose("time", "keypoints", "individuals", "space").values
@@ -71,22 +52,11 @@ def load_pose_2d_movement(mov_ds):
     }
     return test, metadata
 
-test, metadata = load_pose_2d(dlc_inference_path)
+test, metadata = af2d.load_pose_2d(dlc_inference_path)
 
 test2, metadata2 = load_pose_2d_movement(ds_dlc)
-print(test.shape, test2.shape)
 assert np.allclose(test, test2)
-# %%
-f, axs = plt.subplots(2, 1)
-axs[0].imshow(test[:, :, 0, 0], aspect="auto")
-axs[1].imshow(test2[:, :, 0, 0], aspect="auto")
-plt.show()
 
-
-# %%
-position_vals = ds_dlc.position.transpose("time", "individuals", "keypoints", "space").values
-confidence_vals = ds_dlc.confidence.transpose("time", "individuals", "keypoints").values
-np.concatenate([position_vals, confidence_vals[:, :, :, None]], axis=3).shape
 
 # %%
 ds_dlc.coords["time"].values
@@ -100,6 +70,12 @@ config = {
     }
 }
 
-viterbi_points, viterbi_scores = filter_pose_viterbi(config, test, metadata["bodyparts"])
+if __name__ == "__main__":
+    print("filtering...")
+    viterbi_points, viterbi_scores = af2d.filter_pose_viterbi(config, test, metadata["bodyparts"])
+    print("done")
+    print(viterbi_points.shape, viterbi_scores.shape)
+
+
 
 # %%

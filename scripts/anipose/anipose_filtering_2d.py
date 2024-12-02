@@ -163,29 +163,35 @@ def filter_pose_viterbi(config, all_points, bodyparts):
     points = np.full((n_frames, n_joints, 2), np.nan, dtype='float64')
     scores = np.empty((n_frames, n_joints), dtype='float64')
 
-    if config['filter']['multiprocessing']:
-        n_proc_default = max(min(cpu_count() // 2, n_joints), 1)
-        n_proc = config['filter'].get('n_proc', n_proc_default)
-    else:
-        n_proc = 1
-    ctx = get_context('spawn')
-    pool = ctx.Pool(n_proc)
-
     max_offset = config['filter']['n_back']
     thres_dist = config['filter']['offset_threshold']
 
-    iterable = [ (jix, points_full[:, jix, :], scores_full[:, jix],
-                  max_offset, thres_dist)
-                 for jix in range(n_joints) ]
+    if config['filter']['multiprocessing']:
+        n_proc_default = max(min(cpu_count() // 2, n_joints), 1)
+        n_proc = config['filter'].get('n_proc', n_proc_default)
+        ctx = get_context('spawn')
+        pool = ctx.Pool(n_proc)
 
-    results = pool.imap_unordered(viterbi_path_wrapper, iterable)
+        iterable = [(jix, points_full[:, jix, :], scores_full[:, jix],
+                    max_offset, thres_dist)
+                   for jix in range(n_joints)]
 
-    for jix, pts_new, scs_new in tqdm(results, ncols=70):
-        points[:, jix] = pts_new
-        scores[:, jix] = scs_new
+        results = pool.imap_unordered(viterbi_path_wrapper, iterable)
 
-    pool.close()
-    pool.join()
+        for jix, pts_new, scs_new in tqdm(results, total=n_joints, ncols=70):
+            points[:, jix] = pts_new
+            scores[:, jix] = scs_new
+
+        pool.close()
+        pool.join()
+    else:
+        for jix in tqdm(range(n_joints), ncols=70):
+            pts_new, scs_new = viterbi_path(points_full[:, jix, :], 
+                                          scores_full[:, jix],
+                                          max_offset, 
+                                          thres_dist)
+            points[:, jix] = pts_new
+            scores[:, jix] = scs_new
 
     return points, scores
 
