@@ -41,7 +41,7 @@ if plots:
 
 # %%
 
-def load_pose_2d_movement(mov_ds):
+def movement_to_anipose(mov_ds):
     position_vals = mov_ds.position.transpose("time", "keypoints", "individuals", "space").values
     confidence_vals = mov_ds.confidence.transpose("time", "keypoints", "individuals").values
     test = np.concatenate([position_vals, confidence_vals[:, :, :, None]], axis=3)
@@ -74,8 +74,22 @@ if __name__ == "__main__":
     print("filtering...")
     viterbi_points, viterbi_scores = af2d.filter_pose_viterbi(config, test, metadata["bodyparts"])
     print("done")
-    print(viterbi_points.shape, viterbi_scores.shape)
+# %%
+print(viterbi_points.shape, viterbi_scores.shape)
 
 
+# %%
+def anipose_to_movement(data, source_ds):
+    """Convert anipose format back to movement format"""
+
+    ds = source_ds.copy()
+    ds.position.values = data[:, np.newaxis, :, :]
+    
+    return ds
+
+ds_filtered = anipose_to_movement(viterbi_points, ds_dlc)
+
+# %%
+ds_filtered# %%
 
 # %%
