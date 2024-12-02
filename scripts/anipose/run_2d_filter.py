@@ -40,27 +40,9 @@ if plots:
     plt.show()
 
 # %%
+ds_to_filter = ds_dlc
+points, metadata = load_pose_2d_movement(ds_to_filter)
 
-def movement_to_anipose(mov_ds):
-    position_vals = mov_ds.position.transpose("time", "keypoints", "individuals", "space").values
-    confidence_vals = mov_ds.confidence.transpose("time", "keypoints", "individuals").values
-    test = np.concatenate([position_vals, confidence_vals[:, :, :, None]], axis=3)
-    metadata = {
-        'bodyparts': ds_dlc.coords["keypoints"].values,
-        'scorer': ds_dlc.attrs["source_software"],
-        'index': mov_ds.coords["time"].values
-    }
-    return test, metadata
-
-test, metadata = af2d.load_pose_2d(dlc_inference_path)
-
-test2, metadata2 = load_pose_2d_movement(ds_dlc)
-assert np.allclose(test, test2)
-
-
-# %%
-ds_dlc.coords["time"].values
-# %%
 config = {
     "filter": {
         "score_threshold": 0.5,
@@ -72,24 +54,35 @@ config = {
 
 if __name__ == "__main__":
     print("filtering...")
-    viterbi_points, viterbi_scores = af2d.filter_pose_viterbi(config, test, metadata["bodyparts"])
-    print("done")
-# %%
-print(viterbi_points.shape, viterbi_scores.shape)
+    viterbi_points, viterbi_scores = af2d.filter_pose_viterbi(config, points, metadata["bodyparts"])
 
+print(viterbi_points.shape, viterbi_scores.shape)
 
 # %%
 def anipose_to_movement(data, source_ds):
     """Convert anipose format back to movement format"""
-
     ds = source_ds.copy()
+    # data that are 0 alongh both last dim values are set to nan
+    print(np.sum(np.all(data == -1, axis=-1)))
+    data[np.all(data == -1, axis=-1)] = np.nan
+
     ds.position.values = data[:, np.newaxis, :, :]
     
     return ds
 
-ds_filtered = anipose_to_movement(viterbi_points, ds_dlc)
-
+ds_filtered = anipose_to_movement(viterbi_points, ds_to_filter)
+# print(np.sum((viterbi_points[:, :, 0] == 0) & (viterbi_points[:, :, 1] == 0)))
+# print(np.min(ds_filtered.position.sel(keypoints="nose", individuals="individual_0").values[:, 0]))
 # %%
-ds_filtered# %%
+plots = True
+if plots:
+    t_slice = slice(0, 500)
+    plt.figure()
+    for ds, cmap in zip([ds_to_filter, ds_filtered], ["Reds_r", "Blues_r"]):
+        to_plot = ds.position.sel(keypoints="nose", individuals="individual_0", time=t_slice, drop=True)
+        confidence = ds.confidence.sel(keypoints="nose", individuals="individual_0", time=t_slice, drop=True)
+        ocp.color_plot(to_plot.sel(space="x"), -to_plot.sel(space="y"), marker="o",
+        lw=1, c=confidence, cmap=cmap, markersize=2)
+    plt.show()
 
 # %%
