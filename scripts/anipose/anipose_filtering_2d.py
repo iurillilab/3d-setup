@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-    """
-    Code taken from https://github.com/lambdaloop/anipose/blob/master/anipose/filter_pose.py
-    to avoid the whole anipose package dependency, all credit goes to the original authors. 
-    """
+"""
+Code taken from https://github.com/lambdaloop/anipose/blob/master/anipose/filter_pose.py
+to avoid the whole anipose package dependency, all credit goes to the original authors. 
+"""
 
 from tqdm import tqdm, trange
 import os.path, os
@@ -21,7 +21,7 @@ from multiprocessing import cpu_count
 from multiprocessing import Pool, get_context
 import pickle
 
-from .common import make_process_fun, natural_keys
+from common import make_process_fun, natural_keys
 
 
 def nan_helper(y):
