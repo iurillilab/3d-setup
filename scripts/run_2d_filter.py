@@ -32,6 +32,7 @@ config = {
     "filter": {
         "score_threshold": conf_threshold,
         "offset_threshold": 5,
+        "offset_threshold": 5,
         "n_back": 4,
         "multiprocessing": False
     }

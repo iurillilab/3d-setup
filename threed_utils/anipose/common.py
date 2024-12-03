@@ -6,7 +6,10 @@ Code taken from https://github.com/lambdaloop/anipose/blob/master/anipose/filter
 to avoid the whole anipose package dependency, all credit goes to the original authors. 
 """
 
-import cv2
+try:
+    import cv2
+except ImportError:
+    pass
 import re
 import os
 from collections import deque

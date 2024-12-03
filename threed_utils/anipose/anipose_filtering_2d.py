@@ -21,6 +21,7 @@ from multiprocessing import cpu_count
 from multiprocessing import Pool, get_context
 import pickle
 
+
 from .common import make_process_fun, natural_keys
 
 
@@ -512,4 +513,31 @@ def process_session(config, session_path):
         write_pose_2d(all_points[:, :, 0], metadata, outpath)
 
 
-# filter_pose_all = make_process_fun(process_session)
+
+# %%
+if __name__ == "__main__":
+    import threed_utils.anipose.anipose_filtering_2d as af2d
+    from movement.io.load_poses import from_file
+    from pathlib import Path
+
+    data_path = Path("/Users/vigji/Desktop/multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
+    video_path = data_path / "multicam_video_2024-07-24T10_04_55_mirror-bottom.avi.mp4"
+    slp_inference_path = next(video_path.parent.glob(f"{video_path.stem}*.slp"))  # data_path / "multicam_video_2024-07-24T10_04_55_cropped_20241104101620.slp"
+
+    ds_sleap_full = from_file(slp_inference_path, source_software="SLEAP")
+
+    ds_sleap = ds_sleap_full.sel(time=slice(23559, 28559))
+    # ============================================
+    # Viterbi filter
+    # ============================================
+    conf_threshold = 0.2
+    config = {
+        "filter": {
+            "score_threshold": conf_threshold,
+            "offset_threshold": 5,
+            "n_back": 4,
+            "multiprocessing": False
+        }
+    }
+    print("filtering...")
+    ds_filtered = af2d.filter_pose_viterbi(config, ds_sleap)
