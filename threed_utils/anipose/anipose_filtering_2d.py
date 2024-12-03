@@ -21,14 +21,15 @@ from multiprocessing import cpu_count
 from multiprocessing import Pool, get_context
 import pickle
 
-from common import make_process_fun, natural_keys
+from .common import make_process_fun, natural_keys
 
 
-def nan_helper(y):
+def _nan_helper(y):
     return np.isnan(y), lambda z: z.nonzero()[0]
 
 
 def remove_dups(pts, thres=7):
+    """Remove duplicate points that are closer than threshold distance"""
     tindex = np.repeat(np.arange(pts.shape[0])[:, None], pts.shape[1], axis=1)*100
     pts_ix = np.dstack([pts, tindex])
     pts_flat = pts_ix.reshape(-1, 3)
@@ -50,10 +51,21 @@ def remove_dups(pts, thres=7):
     return pts_out
 
 def viterbi_path(points, scores, n_back=3, thres_dist=30):
+    """Apply Viterbi algorithm to find most likely path through points.
+    
+    Args:
+        points: Array of point coordinates
+        scores: Array of confidence scores for each point
+        n_back: Number of frames to look back
+        thres_dist: Distance threshold for transitions
+        
+    Returns:
+        points_new: Filtered point coordinates
+        scores_new: Updated confidence scores
+    """
     n_frames = points.shape[0]
 
     points_nans = remove_dups(points, thres=5)
-    # points_nans[scores < 0.01] = np.nan
 
     num_points = np.sum(~np.isnan(points_nans[:, :, 0]), axis=1)
     num_max = np.max(num_points)
@@ -119,7 +131,6 @@ def viterbi_path(points, scores, n_back=3, thres_dist=30):
 
     points_new = trace[:, :2]
     scores_new = trace[:, 2]
-    # scores_new[out >= num_points] = 0
 
     return points_new, scores_new
 
@@ -131,6 +142,15 @@ def viterbi_path_wrapper(args):
 
 
 def load_pose_2d(fname):
+    """Load 2D pose data from h5 file.
+    
+    Args:
+        fname: Path to h5 file
+        
+    Returns:
+        test: Array of pose data
+        metadata: Dict containing bodyparts, scorer and index info
+    """
     data_orig = pd.read_hdf(fname)
     scorer = data_orig.columns.levels[0][0]
     data = data_orig.loc[:, scorer]
@@ -153,6 +173,15 @@ def load_pose_2d(fname):
     return test, metadata
 
 def movement_to_anipose(mov_ds):
+    """Convert movement dataset to anipose format.
+    
+    Args:
+        mov_ds: Movement dataset
+        
+    Returns:
+        test: Array in anipose format
+        metadata: Dict with metadata
+    """
     position_vals = mov_ds.position.transpose("time", "keypoints", "individuals", "space").values
     confidence_vals = mov_ds.confidence.transpose("time", "keypoints", "individuals").values
     test = np.concatenate([position_vals, confidence_vals[:, :, :, None]], axis=3)
@@ -166,18 +195,25 @@ def movement_to_anipose(mov_ds):
 def anipose_to_movement(data, source_ds):
     """Convert anipose format back to movement format"""
     ds = source_ds.copy()
-    # data that are 0 alongh both last dim values are set to nan
-    print(np.sum(np.all(data == 0, axis=-1)))
-    data[np.all(data == 0, axis=-1)] = np.nan
+    # data that are -1 alongh both last dim values have been set to nan
+    data[np.all(data == -1, axis=-1)] = np.nan
 
     ds.position.values = data[:, np.newaxis, :, :]
     
     return ds
 
-def filter_pose_viterbi(config, mov_ds):
+def filter_pose_viterbi(config, movement_ds):
+    """Apply Viterbi filtering to pose data.
+    
+    Args:
+        config: Dict containing filter parameters
+        movement_ds: Movement dataset to filter
+        
+    Returns:
+        ds_filtered: Filtered movement dataset
+    """
 
-
-    all_points, bodyparts = movement_to_anipose(mov_ds)
+    all_points, bodyparts = movement_to_anipose(movement_ds)
 
     n_frames, n_joints, n_possible, _ = all_points.shape
 
@@ -218,11 +254,21 @@ def filter_pose_viterbi(config, mov_ds):
                                           thres_dist)
             points[:, jix] = pts_new
             scores[:, jix] = scs_new
-    ds_filtered = anipose_to_movement(points, ds_dlc)
+    ds_filtered = anipose_to_movement(points, movement_ds)
     return ds_filtered
 
 
 def write_pose_2d(all_points, metadata, outname=None):
+    """Write pose data to h5 file.
+    
+    Args:
+        all_points: Array of pose data
+        metadata: Dict with metadata
+        outname: Optional output filename
+        
+    Returns:
+        dout: DataFrame with pose data
+    """
     points = all_points[:, :, :2]
     scores = all_points[:, :, 2]
 
@@ -249,6 +295,17 @@ def write_pose_2d(all_points, metadata, outname=None):
 
 
 def filter_pose_medfilt(config, all_points, bodyparts):
+    """Apply median filter to pose data.
+    
+    Args:
+        config: Dict with filter parameters
+        all_points: Array of pose data
+        bodyparts: List of bodypart names
+        
+    Returns:
+        points: Filtered point coordinates
+        scores: Updated confidence scores
+    """
     n_frames, n_joints, n_possible, _ = all_points.shape
 
     points_full = all_points[:, :, :, :2]
@@ -280,7 +337,7 @@ def filter_pose_medfilt(config, all_points, bodyparts):
 
         for i in range(Xf.shape[1]):
             vals = Xfi[:, i]
-            nans, ix = nan_helper(vals)
+            nans, ix = _nan_helper(vals)
             # some data missing, but not too much
             if np.sum(nans) > 0 and np.mean(~nans) > 0.5 and np.sum(~nans) > 5:
                 if config['filter']['spline']:
@@ -292,13 +349,23 @@ def filter_pose_medfilt(config, all_points, bodyparts):
 
         points[:, bp_ix, 0] = Xfi[:, 0]
         points[:, bp_ix, 1] = Xfi[:, 1]
-        # dout[scorer, bp, 'interpolated'] = np.isnan(Xf[:, 0])
 
     scores = scores_full[:, :, 0]
 
     return points, scores
 
 def filter_pose_autoencoder_scores(config, all_points, bodyparts):
+    """Filter pose data using autoencoder scores.
+    
+    Args:
+        config: Dict with filter parameters
+        all_points: Array of pose data
+        bodyparts: List of bodypart names
+        
+    Returns:
+        points_full: Point coordinates
+        scores_fixed: Updated confidence scores
+    """
     n_frames, n_joints, n_possible, _ = all_points.shape
 
     points_full = all_points[:, :, :, :2]
@@ -318,15 +385,13 @@ def filter_pose_autoencoder_scores(config, all_points, bodyparts):
     return points_full, scores_fixed
 
 
-def wrap_input(points, mean, std):
+def _wrap_input(points, mean, std):
     pts_demean = (points - mean) / std
     pts_demean[~np.isfinite(pts_demean)] = 0
-    # pts_demean = pts_demean - np.median(pts_demean, axis=1)[:, None]
     n_frames = pts_demean.shape[0]
     return pts_demean.reshape(n_frames, -1)
-    # return np.hstack([pts_demean.reshape(n_frames, -1), scores])
 
-def unwrap_input(X, mean, std):
+def _unwrap_input(X, mean, std):
     n_joints = X.shape[1] // 2
     pts_demean = X[:, :n_joints*2].reshape(-1, n_joints, 2)
     points = pts_demean * std + mean
@@ -334,6 +399,17 @@ def unwrap_input(X, mean, std):
 
 
 def filter_pose_autoencoder_points(config, all_points, bodyparts):
+    """Filter pose data using autoencoder points.
+    
+    Args:
+        config: Dict with filter parameters
+        all_points: Array of pose data
+        bodyparts: List of bodypart names
+        
+    Returns:
+        points_full: Point coordinates
+        scores_fixed: Updated confidence scores
+    """
     n_frames, n_joints, n_possible, _ = all_points.shape
 
     points_full = all_points[:, :, :, :2]
@@ -352,8 +428,8 @@ def filter_pose_autoencoder_points(config, all_points, bodyparts):
     mean = d['mean']
     std = d['std']
     
-    points_pred = unwrap_input(
-        mlp.predict(wrap_input(
+    points_pred = _unwrap_input(
+        mlp.predict(_wrap_input(
             points_test, mean, std)),
         mean, std)
     dist = np.linalg.norm(points_pred - points_test, axis=2)
@@ -367,7 +443,7 @@ def filter_pose_autoencoder_points(config, all_points, bodyparts):
 
     return points_full, scores_fixed
 
-def wrap_points(points, scores):
+def _wrap_points(points, scores):
     if len(points.shape) == 3: # n_possible = 1
         points = points[:, :, None]
         scores = scores[:, :, None]
@@ -391,6 +467,12 @@ FILTER_MAPPING = {
 POSSIBLE_FILTERS = FILTER_MAPPING.keys()
 
 def process_session(config, session_path):
+    """Process a session of pose data with filtering.
+    
+    Args:
+        config: Dict with pipeline and filter configuration
+        session_path: Path to session directory
+    """
     pipeline_pose = config['pipeline']['pose_2d']
     pipeline_pose_filter = config['pipeline']['pose_2d_filter']
     filter_types = config['filter']['type']
@@ -425,7 +507,7 @@ def process_session(config, session_path):
         for filter_type in filter_types:
             filter_fun = FILTER_MAPPING[filter_type]
             points, scores = filter_fun(config, all_points, metadata['bodyparts'])
-            all_points = wrap_points(points, scores)
+            all_points = _wrap_points(points, scores)
 
         write_pose_2d(all_points[:, :, 0], metadata, outpath)
 
