@@ -5,7 +5,7 @@ import numpy as np
 from pykalman import KalmanFilter
 
 
-def smooth_interpolation(keypoint_positions, max_gap=2):
+def smooth_interpolation(keypoint_positions, max_gap=2, iterations=1):
     """
     Interpolate small gaps (up to `max_gap` frames) in keypoint trajectories while preserving smoothness.
 
@@ -23,45 +23,56 @@ def smooth_interpolation(keypoint_positions, max_gap=2):
 
     for i in range(N):  # Process each keypoint independently
         for d in range(D):  # Process each dimension (x, y) separately
-            data = keypoint_positions[:, i, d]
+            data = interpolated_positions[:, i, d]
 
-            # Find all NaN indices
-            nan_indices = np.where(np.isnan(data))[0]
-            print(nan_indices)
-            # Iterate over contiguous NaN segments
-            start = 0
-            while start < len(nan_indices):
-                end = start
-                while end + 1 < len(nan_indices) and nan_indices[end + 1] == nan_indices[end] + 1:
-                    end += 1
+            for _ in range(iterations):
+                # Find all NaN indices
+                nan_indices = np.where(np.isnan(data))[0]
+                print(nan_indices)
+                
+                # Merge gaps separated by single valid values
+                # merged_gaps = []
+                start = 0
+                while start < len(nan_indices):
+                    end = start
+                    # Find end of current gap
+                    while end + 1 < len(nan_indices) and nan_indices[end + 1] == nan_indices[end] + 1:
+                        end += 1
+                        
+                    # Check if next gap is separated by just one frame
+                    next_start = end + 1
+                    if (next_start < len(nan_indices) and 
+                        nan_indices[next_start] == nan_indices[end] + 2):
+                        # Merge with next gap by continuing search
+                        end = next_start
+                        while end + 1 < len(nan_indices) and nan_indices[end + 1] == nan_indices[end] + 1:
+                            end += 1
+                    
+                    gap_start, gap_end = nan_indices[start], nan_indices[end]
 
-                # Segment of NaNs: [nan_indices[start], ..., nan_indices[end]]
-                gap_start, gap_end = nan_indices[start], nan_indices[end]
-                # gap_end += 1
+                    # Only interpolate if the gap is small enough
+                    if (gap_end - gap_start + 1) <= max_gap:
+                        print("Interpolating gap", gap_start, gap_end)
+                        prev_idx = gap_start - 1
+                        next_idx = gap_end + 1
 
-                # Only interpolate if the gap is small enough
-                if (gap_end - gap_start + 1) <= max_gap:
-                    print("Interpolating gap", gap_start, gap_end)
-                    prev_idx = gap_start - 1
-                    next_idx = gap_end + 1
+                        if prev_idx >= 0 and next_idx < T:
+                            # Compute velocities for smoothness
+                            prev_velocity = data[prev_idx] - (data[prev_idx - 1] if prev_idx > 0 else data[prev_idx])
+                            next_velocity = (data[next_idx] - data[next_idx + 1]
+                                            if next_idx + 1 < T else data[next_idx])
 
-                    if prev_idx >= 0 and next_idx < T:
-                        # Compute velocities for smoothness
-                        prev_velocity = data[prev_idx] - (data[prev_idx - 1] if prev_idx > 0 else data[prev_idx])
-                        next_velocity = (data[next_idx] - data[next_idx + 1]
-                                         if next_idx + 1 < T else data[next_idx])
-
-                        # Linearly interpolate the positions while matching edge velocities
-                        alpha = np.linspace(0, 1, gap_end - gap_start + 2)
-                        interpolated_segment = (
-                            (1 - alpha) * (data[prev_idx] + prev_velocity * alpha[0]) +
-                            alpha * (data[next_idx] - next_velocity * (1 - alpha[-1]))
-                        )
-                        interpolated_positions[gap_start:gap_end + 1, i, d] = interpolated_segment[1:]
-                else:
-                    print("Not interpolating gap", gap_start, gap_end)
-                # Move to next segment
-                start = end + 1
+                            # Linearly interpolate the positions while matching edge velocities
+                            alpha = np.linspace(0, 1, gap_end - gap_start + 2)
+                            interpolated_segment = (
+                                (1 - alpha) * (data[prev_idx] + prev_velocity * alpha[0]) +
+                                alpha * (data[next_idx] - next_velocity * (1 - alpha[-1]))
+                            )
+                            interpolated_positions[gap_start:gap_end + 1, i, d] = interpolated_segment[1:]
+                    else:
+                        print("Not interpolating gap", gap_start, gap_end)
+                    # Move to next segment
+                    start = end + 1
 
     return interpolated_positions
 
@@ -165,7 +176,8 @@ if __name__ == "__main__":
     noisy_positions = true_positions + np.random.randn(T, N, 2) * 0.5
     
     # Add some NaN points randomly
-    nan_mask = np.random.random(size=(T, N)) < 0.03  # 5% of points will be NaN
+    nan_mask = np.random.random(size=(T, N)) < 0.05  # 5% of points will be NaN
+    nan_mask[80:89, :] = True
     noisy_positions[nan_mask] = np.nan
     
     # Generate confidences, setting to 0 where we have NaNs
