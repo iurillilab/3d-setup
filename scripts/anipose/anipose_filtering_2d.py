@@ -152,7 +152,33 @@ def load_pose_2d(fname):
 
     return test, metadata
 
-def filter_pose_viterbi(config, all_points, bodyparts):
+def movement_to_anipose(mov_ds):
+    position_vals = mov_ds.position.transpose("time", "keypoints", "individuals", "space").values
+    confidence_vals = mov_ds.confidence.transpose("time", "keypoints", "individuals").values
+    test = np.concatenate([position_vals, confidence_vals[:, :, :, None]], axis=3)
+    metadata = {
+        'bodyparts': mov_ds.coords["keypoints"].values,
+        'scorer': mov_ds.attrs["source_software"],
+        'index': mov_ds.coords["time"].values
+    }
+    return test, metadata
+
+def anipose_to_movement(data, source_ds):
+    """Convert anipose format back to movement format"""
+    ds = source_ds.copy()
+    # data that are 0 alongh both last dim values are set to nan
+    print(np.sum(np.all(data == 0, axis=-1)))
+    data[np.all(data == 0, axis=-1)] = np.nan
+
+    ds.position.values = data[:, np.newaxis, :, :]
+    
+    return ds
+
+def filter_pose_viterbi(config, mov_ds):
+
+
+    all_points, bodyparts = movement_to_anipose(mov_ds)
+
     n_frames, n_joints, n_possible, _ = all_points.shape
 
     points_full = all_points[:, :, :, :2]
@@ -192,8 +218,8 @@ def filter_pose_viterbi(config, all_points, bodyparts):
                                           thres_dist)
             points[:, jix] = pts_new
             scores[:, jix] = scs_new
-
-    return points, scores
+    ds_filtered = anipose_to_movement(points, ds_dlc)
+    return ds_filtered
 
 
 def write_pose_2d(all_points, metadata, outname=None):

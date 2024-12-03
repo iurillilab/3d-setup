@@ -28,29 +28,47 @@ ds_dlc.position.to_numpy()
 plt.figure()
 plt.scatter(nose_coords.sel(space="x"), nose_coords.sel(space="y"), s=1, c=nose_conf, cmap="turbo")
 nose_coords.sel(space="x").shape
+
+
+#%%
+keys = [i for i in ds_dlc.keypoints.values]
+ds_filts =[]
+for key in keys:
+    ds_filts.append(ds_dlc.sel(keypoints=[key], drop=False))
+
+
 # %%
 viewer = napari.Viewer()  #ndisplay=3)
 viewer.add_image(VideoReaderNP(str(video_path)))
+keys = [i for i in ds_dlc.keypoints.values]
 
-for ds, ds_name in [(ds_sleap, "SLEAP"), (ds_dlc, "DeepLabCut")]:
-    ds = filter_by_confidence(ds, confidence=0.9, print_report=False)
-    ds = interpolate_over_time(ds, method="linear", print_report=False)
+for ds, ds_name, cmap in [(ds_sleap, "SLEAP", "Blues"), (ds_dlc, "DeepLabCut", "Reds")]:
+    for key in keys:
+    # ds = filter_by_confidence(ds, confidence=0.9, print_report=False)
+        ds_filt = ds.sel(keypoints=[key], drop=False)
+        ds_filt = interpolate_over_time(ds_filt, method="linear", print_report=False)
 
-    track, props = ds_to_napari_tracks(ds)
+        track, props = ds_to_napari_tracks(ds_filt)
+        props.face_colormap = cmap
 
-    points_style = PointsStyle(name=f"Keypoints - {ds_name}", properties=props, size=7)
-    points_style.set_color_by(prop="keypoint", cmap="turbo")
+        points_style = PointsStyle(name=f"confidence_{key} - {ds_name}", properties=props, size=3)
+        points_style.face_colormap = cmap
+        points_style.set_color_by(prop="confidence", cmap=cmap)
 
-    tracks_props = columns_to_categorical_codes(props, ["individual", "keypoint"])
-    tracks_style = TracksStyle(name=f"Tracks - {ds_name}", properties=tracks_props, tail_width=2)
-    tracks_style.set_color_by(prop="keypoint", cmap="turbo")
+        # tracks_props = columns_to_categorical_codes(props, ["individual", "keypoint"])
+        # tracks_style = TracksStyle(name=f"Tracks_{key} - {ds_filt}", properties=tracks_props, tail_width=2)
+        # tracks_style.set_color_by(prop="confidence", cmap="turbo")
 
-    viewer.add_tracks(track, **tracks_style.as_kwargs())
-    viewer.add_points(track[:, 1:], **points_style.as_kwargs())
-    viewer.add_shapes
+        # viewer.add_tracks(track, **tracks_style.as_kwargs())
+        viewer.add_points(track[:, 1:], **points_style.as_kwargs())
+        viewer.add_shapes
 
 track.shape
 # %%
+#potential differences at frame 17306
+
+#%%
+
 from matplotlib import pyplot as plt
 for i in range(track.shape[1]):
     plt.figure()

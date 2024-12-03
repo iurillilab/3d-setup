@@ -4,14 +4,14 @@ import anipose_filtering_2d as af2d
 from movement.io.load_poses import from_file
 from matplotlib import pyplot as plt
 from pathlib import Path
-import ocplot as ocp
+#import ocplot as ocp
 import numpy as np
 
 plots = False
 
 # %%
-data_path = Path("/Users/vigji/Desktop/multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
-# data_path = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\sample_video_for_triangulation\multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
+#data_path = Path("/Users/vigji/Desktop/multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
+data_path = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\sample_video_for_triangulation\multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
 video_path = data_path / "multicam_video_2024-07-24T10_04_55_mirror-bottom.avi.mp4"
 slp_inference_path = next(video_path.parent.glob(f"{video_path.stem}*.slp"))  # data_path / "multicam_video_2024-07-24T10_04_55_cropped_20241104101620.slp"
 dlc_inference_path = next(video_path.parent.glob(f"{video_path.stem}*.h5"))  # data_path / "multicam_video_2024-07-24T10_04_55_central.aviDLC_resnet50_labels.v001.pkg_converted2024-11-21shuffle1_50000.h5"
@@ -62,8 +62,9 @@ def anipose_to_movement(data, source_ds):
     
     return ds
 
-ds_to_filter = ds_dlc
-points, metadata = load_pose_2d_movement(ds_to_filter)
+# ds_to_filter = ds_dlc
+# points, metadata = load_pose_2d_movement(ds_to_filter)
+
 
 # %%
 # ============================================
@@ -79,9 +80,24 @@ config = {
 
 if __name__ == "__main__":
     print("filtering...")
-    viterbi_points, viterbi_scores = af2d.filter_pose_viterbi(config, points, metadata["bodyparts"])
+    ds_filtered = af2d.filter_pose_viterbi(config, ds_dlc)
+#  %%
 
-print(viterbi_points.shape, viterbi_scores.shape)
+# add triangulation function from movement ds
+from threed_utils.triangulation import triangulate_all_keypoints
+import pickle 
+
+with open(r"C:\Users\SNeurobiology\code\3d-setup\tests\assets\arena_tracked_points.pkl", "rb") as f:
+    points = pickle.load(f)
+    extrinsics = points["extrinsics"]
+    intrinsics = points["intrinsics"]
+
+print(extrinsics, intrinsics)
+
+
+
+
+
 
 # %%
 ds_filtered = anipose_to_movement(viterbi_points, ds_to_filter)
