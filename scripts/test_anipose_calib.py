@@ -25,6 +25,8 @@
 #     print(f"Non-NaN frames: {non_nan_frames}")
 
 from threed_utils.anipose.calibrate import process_session_core
+from threed_utils.anipose.common import get_cam_name
+import re
 
 from pathlib import Path
 calib_config = dict(board_type="checkerboard",
@@ -34,7 +36,9 @@ calib_config = dict(board_type="checkerboard",
                 calibration_init=None,
                 fisheye=False)
 
-triang_config = dict(cam_regex="_multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_(central)\.\w+(?:\.\w+)?$")
+triang_config = {
+    "cam_regex": r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)?$"
+}
 manual_verification_config = dict(manually_verify=False)
 
 config = dict(calibration=calib_config, 
@@ -42,5 +46,16 @@ config = dict(calibration=calib_config,
               manual_verification=manual_verification_config,
               )
 data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
-videos = [str(f) for f in data_dir.glob("*.mp4")]
+videos = [f for f in data_dir.glob("*.mp4")]
 process_session_core(config, videos, str(data_dir / "anipose_calib"))
+
+# or video in videos:
+    # print("Looking at video: ", video.name)
+    # matching multicam_video_2024-08-03T16_36_58_mirror-right.avi.mp4
+    # regex = "multicam_video_*"
+    #match = re.search(triang_config['cam_regex'], str(video.name))
+    # print(match)
+    # print(match.groups())
+            
+
+    # print(get_cam_name(config, str(video)))
