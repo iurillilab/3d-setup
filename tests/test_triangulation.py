@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from threed_utils.triangulation import triangulate_all_keypoints
+from threed_utils.old_triangulation import triangulate_all_keypoints
 
 # @pytest.mark.parameterize("alpha, expected_output", [(0.5, 0.1), (1, 5)])
 # def triangulate(data_dictionary, alpha, expected_output):

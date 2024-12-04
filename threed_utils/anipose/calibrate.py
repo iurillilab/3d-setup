@@ -189,8 +189,10 @@ def process_session(config, session_path):
                                '*.' + video_ext))
 
 
-def process_session_core(config, videos, outdir):
 
+# My arbitray split of anipose process_session function to disentangle the calibration
+# from the parsing
+def process_session_core(config, videos, outdir):
     videos = sorted(videos)
 
     # Organize videos by camera
@@ -283,3 +285,7 @@ def process_session_core(config, videos, outdir):
 
 
 calibrate_all = make_process_fun(process_session)
+
+
+# if __name__ == '__main__':
+
