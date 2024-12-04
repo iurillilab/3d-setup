@@ -243,10 +243,7 @@ if __name__ == "__main__":
     filtered_ds = ds_sleap_full.copy()
     filtered_ds.position.values = smoothed_positions[:, np.newaxis, :, :]
 
-    viewer = napari.Viewer() 
-    viewer.add_image(VideoReaderNP(str(video_path)))
-    keys = [i for i in list(to_compare.values())[0].keypoints.values]
-    tracks_on = False
+
 
     to_compare = dict(original=ds_sleap_full, filtered=filtered_ds)
 
@@ -257,7 +254,20 @@ if __name__ == "__main__":
     from threed_utils.movement_napari.convert import ds_to_napari_tracks
     from napari_video.napari_video import VideoReaderNP
 
+    viewer = napari.Viewer() 
+    viewer.add_image(VideoReaderNP(str(video_path)))
+    keys = [i for i in list(to_compare.values())[0].keypoints.values]
+    tracks_on = False
     selected_keys = ["nose"]
+    conf_threshold = 0.2
+    def _custom_colormap(base_cmap_name, confidence, conf_threshold=0.2, low_conf_color=[0.5, 0, 0.5]):
+        base_cmap = plt.get_cmap(base_cmap_name)
+        colors = np.zeros((len(confidence), 3))
+        low_conf = confidence < conf_threshold
+        colors[low_conf] = low_conf_color
+        colors[~low_conf] = base_cmap(confidence[~low_conf])[:, :3]
+        return colors
+        
     for (ds_name, ds), cmap in zip(to_compare.items(), ["Blues", "Greens"]):
         for key in selected_keys:
             ds_filt = ds.sel(keypoints=[key], drop=False)
@@ -278,3 +288,4 @@ if __name__ == "__main__":
             viewer.add_points(track[:, 1:], **points_style.as_kwargs())
 
     viewer.show()
+    napari.run()
