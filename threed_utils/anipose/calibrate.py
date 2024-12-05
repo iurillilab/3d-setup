@@ -260,7 +260,7 @@ def process_session_core(config, videos, outdir):
         cgroup.set_camera_sizes_videos(video_list)
         error = cgroup.calibrate_rows(all_rows, board,
                                       init_intrinsics=init_stuff, init_extrinsics=init_stuff,
-                                      max_nfev=200, n_iters=6,
+                                      max_nfev=200, n_iters=1,
                                       n_samp_iter=200, n_samp_full=1000,
                                       verbose=True)
 

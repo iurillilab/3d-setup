@@ -26,37 +26,38 @@
 #         # print(corners, ids)
 #     print(f"Non-NaN frames: {non_nan_frames}")
 
-
+# %%
 # ================================
 # Calibration
 # ================================
-# from threed_utils.anipose.calibrate import process_session_core
-# from threed_utils.anipose.common import get_cam_name
-# import re
+from threed_utils.anipose.calibrate import process_session_core
+from threed_utils.anipose.common import get_cam_name
+import re
 
-# from pathlib import Path
-# calib_config = dict(board_type="checkerboard",
-#                 board_size=(5, 7),
-#                 board_square_side_length=12.5,
-#                 animal_calibration=False,
-#                 calibration_init=None,
-#                 fisheye=False)
+from pathlib import Path
+calib_config = dict(board_type="checkerboard",
+                board_size=(5, 7),
+                board_square_side_length=12.5,
+                animal_calibration=False,
+                calibration_init=None,
+                fisheye=False)
 
-# triang_config = {
-#     "cam_regex": r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)?$"
-# }
-# manual_verification_config = dict(manually_verify=False)
+triang_config = {
+    "cam_regex": r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)?$"
+}
+manual_verification_config = dict(manually_verify=False)
 
-# config = dict(calibration=calib_config, 
-#               triangulation=triang_config,
-#               manual_verification=manual_verification_config,
-#               )
-# data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
-# videos = [f for f in data_dir.glob("*.mp4")]
+config = dict(calibration=calib_config, 
+              triangulation=triang_config,
+              manual_verification=manual_verification_config,
+              )
+data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
+videos = [f for f in data_dir.glob("*.mp4")]
+print(videos)
+process_session_core(config, videos, str(data_dir / "anipose_calib"))
 
-# process_session_core(config, videos, str(data_dir / "anipose_calib"))
 
-
+# %%
 # ================================
 # Triangulation
 # ================================
@@ -68,6 +69,7 @@ import pickle
 import re
 import numpy as np
 import xarray as xr
+import pandas as pd
 
 
 from pathlib import Path
@@ -120,7 +122,17 @@ print(ds.position.shape, ds.confidence.shape, bodyparts)
 calib_fname = calibration_dir / 'calibration.toml'
 cgroup = CameraGroup.load(calib_fname)
 
-triangulate_core(config, ds.position.values, ds.confidence.values, bodyparts, cgroup, "test")
+output_fname = data_dir / "test_triangulation.csv"
+triangulate_core(config, ds.position.values, ds.confidence.values, bodyparts, cgroup, output_fname)
+
+triang_ds = pd.read_csv(output_fname)
+print(triang_ds.head())
+
+# %%
+from matplotlib import pyplot as plt
+
+plt.plot(triang_ds['blimbmid_x'], triang_ds['blimbmid_y'])
+plt.show()
 
 # from_file(filename, software="SLEAP")
 
@@ -146,3 +158,75 @@ triangulate_core(config, ds.position.values, ds.confidence.values, bodyparts, cg
             
 
     # print(get_cam_name(config, str(video)))
+
+# %%
+# old triangulation:
+
+import pickle
+import flammkuchen as fl
+from tqdm import tqdm
+
+data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
+old_pickle_fname = data_dir / "anipose_calib" / "detections_orig.pickle"
+with open(old_pickle_fname, "rb") as f:
+    pickle_sample = pickle.load(f)
+
+all_flammkuchen_files = list(data_dir.glob("*.detections.h5"))
+
+full_pickle_imitation = []  
+for f in tqdm(all_flammkuchen_files):
+    fl_sample = fl.load(f)
+    imitating_list = []
+    for i in range(len(fl_sample["frame_ixs"])):
+        frame_dict = {}
+        frame_dict["framenum"] = (0, fl_sample["frame_ixs"][i])
+        frame_dict["corners"] = fl_sample["uvs"][i][:, np.newaxis, :]
+        frame_dict["ids"] = np.arange(len(fl_sample["uvs"][i]))
+        frame_dict["filled"] = fl_sample["uvs"][i][:, np.newaxis, :]
+        imitating_list.append(frame_dict)
+    full_pickle_imitation.append(imitating_list)
+
+with open(old_pickle_fname.parent / "detections.pickle", "wb") as f:
+    pickle.dump(full_pickle_imitation, f)
+# %%
+
+
+    # for (im_key, im_val), (pickle_key, pickle_val) in zip(imitating_list[0].items(), pickle_sample[0][0].items()):
+    #     print(im_key, pickle_key)
+    #     assert im_key == pickle_key
+    #     try:
+    #         print(im_val.shape, pickle_val.shape)
+    #         assert im_val.shape == pickle_val.shape
+    #     except AttributeError:
+    #         print(im_val, pickle_val)
+
+    
+    # assert np.allclose(im_val, pickle_val)
+# %%
+fl_sample["frame_ixs"]
+# %%
+fl_sample["img_size"]
+# %%
+fl_sample["qc_data"].shape
+# %%
+fl_sample["uvs"].shape
+# %%
+pickle_sample[0][0].keys()
+# %%
+len(pickle_sample)
+# %%
+pickle_sample[0][2]["framenum"]
+# %%
+pickle_sample[0][0]["corners"].shape
+# %%
+pickle_sample[0][0]["corners"].ids
+# %%
+pickle_sample[0][0]["filled"].shape
+
+# %%
+plt.figure()
+plt.scatter(pickle_sample[0][0]["corners"][:, 0, 0], pickle_sample[0][0]["corners"][:, 0, 1])
+# plt.scatter(pickle_sample[0][0]["filled"][:, 0, 0], pickle_sample[0][0]["filled"][:, 0, 1])
+
+plt.show()
+# %%
