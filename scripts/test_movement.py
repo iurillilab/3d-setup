@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 from movement.io import load_poses, save_poses
 
-from threed_utils.triangulation import triangulate_all_keypoints
+from threed_utils.old_triangulation import triangulate_all_keypoints
 
 path = Path("/Users/vigji/Downloads/tracked_points_sample.pkl")
 with open(path, "rb") as f:

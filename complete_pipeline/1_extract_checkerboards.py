@@ -9,8 +9,8 @@ from numpy import mat
 
 # input_folder = Path(r'/Users/vigji/Desktop/dest_dir/19042024/Calibration/Basler_acA1440-220um__40075240__20240419_100853427_cropped')
 input_folder = next(
-    Path(r"/Users/vigji/Desktop/dest_dir/19042024").glob(
-        "Calibration/Basler_acA1440-220um__*_cropped"
+    Path("/Users/vigji/Desktop/test-anipose").glob(
+        "*alibration*"
     )
 )
 
