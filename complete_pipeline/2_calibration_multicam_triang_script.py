@@ -49,7 +49,7 @@ new_coord_views = xr.DataArray(cam_names, dims="view")
 
 views_ds = xr.concat(views_dss, dim=new_coord_views)
 
-time_slice = slice(0, 1000)
+time_slice = slice(145, 1000)
 views_ds = views_ds.sel(time=time_slice, drop=True)
 
 
@@ -123,7 +123,7 @@ triang_config = {
     "ransac": False,
     "optim": False,
 }
-# anipose_triangulated_ds = anipose_triangulate_ds(views_ds, calib_toml_path, **triang_config)
+anipose_triangulated_ds = anipose_triangulate_ds(views_ds, calib_toml_path, **triang_config)
 
 triang_config_optim = {
     "ransac": False,
@@ -142,7 +142,9 @@ triang_config_optim = {
 de_nanned = views_ds.copy()
 de_nanned.position.values[np.isnan(de_nanned.position.values)] = 0
 
-anipose_triangulated_ds_optim = anipose_triangulate_ds(de_nanned, 
+# subtract random val between 0 and 1 to confidences:
+de_nanned.confidence.values -= np.random.rand(*de_nanned.confidence.values.shape)
+anipose_triangulated_ds_optim = anipose_triangulate_ds(de_nanned.sel(time=slice(145, 1000)), 
                                                        calib_toml_path, 
                                                        **triang_config_optim)
 
@@ -176,11 +178,11 @@ def plot_3d_points_and_trail(coords_array, ax=None, individual_name="checkerboar
 
 fig = plt.figure()
 ax = fig.add_subplot(projection="3d")
-index = 144
-trail = True
-plot_3d_points_and_trail(mcc_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
-fig = plot_3d_points_and_trail(anipose_triangulated_ds_optim, ax=ax, frame_idx=index, trail=trail)
-plt.show()
+for index in [0, 10, 20]:
+    trail = False
+    plot_3d_points_and_trail(mcc_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
+    plot_3d_points_and_trail(anipose_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
+    plt.show()
 
 
 # %%
@@ -188,6 +190,7 @@ non_nans = ~np.isnan(mcc_triangulated_ds.position.values).any(axis=(1, 2, 3))
 non_nans &= ~np.isnan(anipose_triangulated_ds.position.values).any(axis=(1, 2, 3))
 non_nans_idxs = np.where(non_nans)[0]
 print(non_nans_idxs)
+print(np.diff(non_nans_idxs), np.argwhere(np.diff(non_nans_idxs) > 1))
 # %%
 mcc_triangulated_ds.position.values.shape
 # %%
