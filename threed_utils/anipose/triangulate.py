@@ -218,7 +218,7 @@ def triangulate(config,
     return triangulate_core(config, all_points_raw, all_scores, bodyparts, cgroup, output_fname)
 
 
-def triangulate_core(config, all_points_raw, all_scores, bodyparts, cgroup, output_fname):
+def triangulate_core(config, all_points_raw, all_scores, bodyparts, cgroup):
     """Core triangulation function.
     
     Parameters
@@ -233,8 +233,6 @@ def triangulate_core(config, all_points_raw, all_scores, bodyparts, cgroup, outp
         List of bodypart names.
     cgroup : CameraGroup
         Camera group object.
-    output_fname : str
-        Output file name.
     """
     n_cams, n_frames, n_joints, _ = all_points_raw.shape
 
