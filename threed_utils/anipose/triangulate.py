@@ -212,19 +212,25 @@ def triangulate(config,
 
     cgroup = cgroup.subset_cameras_names(cam_names)
 
-    n_cams, n_frames, n_joints, _ = all_points_raw.shape
-
     bad = all_scores < config['triangulation']['score_threshold']
     all_points_raw[bad] = np.nan
 
+    return triangulate_core(config, all_points_raw, all_scores, bodyparts, cgroup, output_fname)
+
+
+def triangulate_core(config, all_points_raw, all_scores, bodyparts, cgroup, output_fname):
+
+    n_cams, n_frames, n_joints, _ = all_points_raw.shape
+
     if config['triangulation']['optim']:
+        # Constrained triangulation minimizing reprojection error, constrains, and temporal continuity
         constraints = load_constraints(config, bodyparts)
         constraints_weak = load_constraints(config, bodyparts, 'constraints_weak')
 
         points_2d = all_points_raw
-        scores_2d = all_scores
+        # scores_2d = all_scores
 
-        points_shaped = points_2d.reshape(n_cams, n_frames*n_joints, 2)
+        points_shaped = points_2d.reshape(n_cams, n_frames * n_joints, 2)
         if config['triangulation']['ransac']:
             points_3d_init, _, _, _ = cgroup.triangulate_ransac(points_shaped, progress=True)
         else:
@@ -232,6 +238,8 @@ def triangulate(config,
         points_3d_init = points_3d_init.reshape((n_frames, n_joints, 3))
 
         c = np.isfinite(points_3d_init[:, :, 0])
+
+
         if np.sum(c) < 20:
             print("warning: not enough 3D points to run optimization")
             points_3d = points_3d_init
@@ -256,12 +264,12 @@ def triangulate(config,
             for start in range(0, n_frames, chunk_size):
                 if start == 0:
                     n_fixed = 0
-                    p2d = points_2d[:, start:start+chunk_size]
-                    p3d = points_3d_init[start:start+chunk_size]
+                    p2d = points_2d[:, start:start + chunk_size]
+                    p3d = points_3d_init[start:start + chunk_size]
                 else:
                     n_fixed = 15
-                    p2d = points_2d[:, start-n_fixed:start+chunk_size]
-                    p3d = np.vstack([fixed, points_3d_init[start:start+chunk_size]])
+                    p2d = points_2d[:, start - n_fixed:start + chunk_size]
+                    p3d = np.vstack([fixed, points_3d_init[start:start + chunk_size]])
 
                 points_3d = cgroup.optim_points(
                     p2d, p3d,
@@ -274,15 +282,19 @@ def triangulate(config,
                     n_deriv_smooth=config['triangulation']['n_deriv_smooth'],
                     reproj_error_threshold=config['triangulation']['reproj_error_threshold'],
                     verbose=True, n_fixed=n_fixed)
-                points_3d_out[start:start+chunk_size] = points_3d[n_fixed:]
+                points_3d_out[start:start + chunk_size] = points_3d[n_fixed:]
                 fixed = points_3d[-15:]
             points_3d = points_3d_out
 
+        # Flatten the points for the reprojection error calculation
         points_2d_flat = points_2d.reshape(n_cams, -1, 2)
         points_3d_flat = points_3d.reshape(-1, 3)
 
+        # Calculate the reprojection error
         errors = cgroup.reprojection_error(
             points_3d_flat, points_2d_flat, mean=True)
+        
+        # Check if the points are good
         good_points = ~np.isnan(all_points_raw[:, :, :, 0])
         num_cams = np.sum(good_points, axis=0).astype('float')
 
@@ -295,8 +307,9 @@ def triangulate(config,
         scores_3d[num_cams < 1] = np.nan
         all_errors[num_cams < 1] = np.nan
 
+    # Vanilla or RANSAC triangulation:
     else:
-        points_2d = all_points_raw.reshape(n_cams, n_frames*n_joints, 2)
+        points_2d = all_points_raw.reshape(n_cams, n_frames * n_joints, 2)
         if config['triangulation']['ransac']:
             points_3d, picked, p2ds, errors = cgroup.triangulate_ransac(
                 points_2d, min_cams=3, progress=True)
@@ -323,6 +336,7 @@ def triangulate(config,
         all_errors[num_cams < 2] = np.nan
         num_cams[num_cams < 2] = np.nan
 
+    # Reorient the coordinate frame if needed:
     if 'reference_point' in config['triangulation'] and 'axes' in config['triangulation']:
         all_points_3d_adj, M, center = correct_coordinate_frame(config, all_points_3d, bodyparts)
     else:
@@ -330,6 +344,7 @@ def triangulate(config,
         M = np.identity(3)
         center = np.zeros(3)
 
+    # create final dataframe with the results:
     dout = pd.DataFrame()
     for bp_num, bp in enumerate(bodyparts):
         for ax_num, axis in enumerate(['x','y','z']):
