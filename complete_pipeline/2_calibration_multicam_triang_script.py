@@ -99,7 +99,7 @@ mcc_triangulated_ds = mcc_triangulate_ds(views_ds, calib_toml_path)
 # Test anipose triangulation
 # ===============================================
 
-def anipose_triangulate_ds(views_ds, calib_toml_path, progress_bar=True, **config_kwargs):
+def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
     triang_config = config_kwargs
     config = dict(triangulation=triang_config)
 
@@ -123,20 +123,28 @@ triang_config = {
     "ransac": False,
     "optim": False,
 }
-anipose_triangulated_ds = anipose_triangulate_ds(views_ds, calib_toml_path, **triang_config)
+# anipose_triangulated_ds = anipose_triangulate_ds(views_ds, calib_toml_path, **triang_config)
 
 triang_config_optim = {
     "ransac": False,
     "optim": True,
     "optim_chunking": True,
     "optim_chunking_size": 100,
-    "score_threshold": 0.05,
+    "score_threshold": 0.0,
     "scale_smooth": 4,
     "scale_length": 2,
+    "scale_length_weak": 0.5,
+    "n_deriv_smooth": 2,
+    "reproj_error_threshold": 150,
+    "constraints": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+    "constraints_weak": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
 }
-anipose_triangulated_ds_optim = anipose_triangulate_ds(views_ds, 
+de_nanned = views_ds.copy()
+de_nanned.position.values[np.isnan(de_nanned.position.values)] = 0
+
+anipose_triangulated_ds_optim = anipose_triangulate_ds(de_nanned, 
                                                        calib_toml_path, 
-                                                       **triang_config)
+                                                       **triang_config_optim)
 
 # %%
 def plot_3d_points_and_trail(coords_array, ax=None, individual_name="checkerboard", 
@@ -171,7 +179,7 @@ ax = fig.add_subplot(projection="3d")
 index = 144
 trail = True
 plot_3d_points_and_trail(mcc_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
-fig = plot_3d_points_and_trail(anipose_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
+fig = plot_3d_points_and_trail(anipose_triangulated_ds_optim, ax=ax, frame_idx=index, trail=trail)
 plt.show()
 
 
