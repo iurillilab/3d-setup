@@ -8,6 +8,17 @@ import numpy as np
 
 
 
+from sleap import Labels
+
+
+
+labels = Labels.load_file(r"D:\SLEAP_models\SLEAP_side_models\labels.v001.slp")
+
+video_paths = [video.filename for video in labels.videos]
+
+print(video_paths)
+
+
 
 # SLEAP models:
 
@@ -84,18 +95,27 @@ def run_inference(enc_vid, model):
             )
             print(f"Inference results saved to: {output_folder}")
         except subprocess.CalledProcessError as e:
-            print(f"Error running comman {output_folder}, error: {e}")
+            print(f"Error running comman {output_folder}, error: {e}, for video: {video}")
 
 
 if __name__ == "__main__":
     GEN_VIDEO_PATH = (
         r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\m_test"
     )
-    side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
-    bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161"
 
-    side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
+
+    
+    labels = Labels.load_file(r"D:\SLEAP_models\SLEAP_side_models\labels.v001.slp")
+    side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241203_120201.single_instance.n=552"
+
+    video_paths = [video.filename for video in labels.videos]
+    # side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
+    # bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161"
+
+    # side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
     # encoded_paths = encode_and_convert(video_paths)
-    run_inference(side_paths, side_model)
-    run_inference(bottom_paths, bottom_model)
+
+
+    run_inference(video_paths, side_model)
+    # run_inference(bottom_paths, bottom_model)
     print("Inference done!")

@@ -84,6 +84,9 @@ with open(r"C:\Users\SNeurobiology\code\3d-setup\tests\assets\arena_tracked_poin
     intrinsics = points["intrinsics"]
 
 print(extrinsics, intrinsics)
+# so now we want to triangulate using anipose
+
+
 
 
 
@@ -116,3 +119,8 @@ from movement_napari.convert import ds_to_napari_tracks
 from napari_video.napari_video import VideoReaderNP
 
 # %%
+
+
+
+
+

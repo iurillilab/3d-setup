@@ -23,7 +23,7 @@ def triangulate_all_keypoints(
     progbar = tqdm if progress_bar else lambda x: x
     for i in progbar(range(calib_uvs.shape[2])):
         all_triang.append(
-            mcc.triangulate(calib_uvs[:, :, i, :], adj_extrinsics, adj_intrinsics)
+            mcc.triangulate(calib_uvs[:, :, i, :], adj_extrinsics, adj_intrinsics[0])
         )
     return np.array(all_triang)
 
