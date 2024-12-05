@@ -61,9 +61,13 @@
 # Triangulation
 # ================================
 
-from threed_utils.anipose.common import get_cam_name
+# from threed_utils.anipose.common import get_cam_name
 from threed_utils.anipose.triangulate import triangulate_core, CameraGroup
+from movement.io.load_poses import from_file, from_multiview_files
 import pickle
+import re
+import numpy as np
+import xarray as xr
 
 
 from pathlib import Path
@@ -75,7 +79,12 @@ calib_config = dict(board_type="checkerboard",
                 fisheye=False)
 
 triang_config = {
-    "cam_regex": r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)?$"
+    "cam_regex": r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)+$",
+    "ransac": False,
+    "optim": False,
+    "optim_chunking": True,
+    "optim_chunking_size": 100,
+    "score_threshold": 0.0,
 }
 manual_verification_config = dict(manually_verify=False)
 
@@ -83,7 +92,38 @@ config = dict(calibration=calib_config,
               triangulation=triang_config,
               manual_verification=manual_verification_config,
               )
-data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
+data_dir = Path("/Users/vigji/Desktop/test-anipose")
+calibration_dir = data_dir / "cropped_calibration_vid" / "anipose_calib"
+slp_files_dir = data_dir / "test_slp_files"
+slp_files = list(slp_files_dir.glob("*.slp"))
+file_path_dict = {re.search(triang_config['cam_regex'], str(f.name)).groups()[0]: f for f in slp_files}
+# From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
+views_list = list(file_path_dict.keys())
+new_coord_views = xr.DataArray(views_list, dims="view")
+
+dataset_list = [
+    from_file(f, source_software="SLEAP")
+    for f in file_path_dict.values()
+]
+# make coordinates labels of the keypoints axis all lowercase
+for ds in dataset_list:
+    ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
+   # print(ds.coords["keypoints"].values)
+
+time_slice = slice(0, 1000)
+ds = xr.concat(dataset_list, dim=new_coord_views).sel(time=time_slice, individuals="individual_0", drop=True)
+
+bodyparts = list(ds.coords["keypoints"].values)
+
+print(ds.position.shape, ds.confidence.shape, bodyparts)
+
+calib_fname = calibration_dir / 'calibration.toml'
+cgroup = CameraGroup.load(calib_fname)
+
+triangulate_core(config, ds.position.values, ds.confidence.values, bodyparts, cgroup, "test")
+
+# from_file(filename, software="SLEAP")
+
 # pickled_detections = data_dir / "anipose_calib" / "detections.pickle"
 # with open(pickled_detections, "rb") as f:
 #     detections = pickle.load(f)
