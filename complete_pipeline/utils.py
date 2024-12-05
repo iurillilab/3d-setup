@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import napari
 import numpy as np
+import toml
 
 
 def crop_all_views(
@@ -264,3 +265,45 @@ def annotate_cropping_windows(frame):
 
     final_rectangles_crops = _get_final_crop_params(rectangles)
     return final_rectangles_crops
+
+
+def write_calibration_toml(output_path, cam_names, img_sizes, extrinsics, intrinsics, result):
+    """Write calibration data to TOML format"""
+    calibration_dict = dict()
+    for i, (cam_name, img_size, extrinsic, intrinsic) in enumerate(zip(cam_names, img_sizes, extrinsics, intrinsics)):
+        cam_dict = dict(
+            name=cam_name,
+            size=img_size.tolist(),
+            matrix=intrinsic[0].tolist(),
+            distortions=intrinsic[1].tolist(),
+            rotation=extrinsic[:3].tolist(),
+            translation=extrinsic[3:].tolist()
+        )
+        calibration_dict[f"cam_{i}"] = cam_dict
+    calibration_dict["metadata"] = dict(adjusted=True, error=float(result.cost))
+
+    with open(output_path, "w") as f:
+        toml.dump(calibration_dict, f)
+
+
+def read_calibration_toml(toml_path):
+    """Read calibration data from TOML format"""
+    with open(toml_path) as f:
+        calibration_dict = toml.load(f)
+    
+    n_cams = len([k for k in calibration_dict.keys() if k.startswith("cam_")])
+    cam_names = []
+    img_sizes = []
+    extrinsics = []
+    intrinsics = []
+    
+    for i in range(n_cams):
+        cam = calibration_dict[f"cam_{i}"]
+        cam_names.append(cam["name"])
+        img_sizes.append(np.array(cam["size"]))
+        extrinsics.append(np.concatenate([cam["rotation"], cam["translation"]]))
+        intrinsics.append((np.array(cam["matrix"]), np.array(cam["distortions"])))
+
+    extrinsics = np.array(extrinsics)
+        
+    return cam_names, img_sizes, extrinsics, intrinsics

@@ -5,13 +5,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import multicam_calibration as mcc
+from multicam_calibration.geometry import triangulate
 from pathlib import Path
 from tqdm import tqdm
 from datetime import datetime
 import flammkuchen as fl
-import toml
+from utils import write_calibration_toml
 
-import tqdm
+from tqdm import tqdm, trange
 import cv2
 
 
@@ -20,9 +21,10 @@ board_shape = (5, 7)
 square_size = 12.5
 data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
 output_dir = data_dir / f"mc_calibration_output_{timestamp}"
+output_dir.mkdir(exist_ok=True)
 
 video_paths = [
-    str(f) for f in data_dir.iterdir() if f.suffix == ".mp4" and "overlay" not in f.stem
+    f for f in data_dir.iterdir() if f.suffix == ".mp4" and "overlay" not in f.stem
 ]
 camera_names = [p.stem.split("_")[-1].split(".avi")[0] for p in video_paths]
 print(camera_names)
@@ -30,15 +32,12 @@ print(camera_names)
 print("Detecting points, if not already detected...")
 # detect calibration object in each video
 all_calib_uvs, all_img_sizes = mcc.run_calibration_detection(
-    video_paths,
+    list(map(str, video_paths)),
     mcc.detect_chessboard,
     n_workers=6,
     detection_options=dict(board_shape=board_shape, scale_factor=0.5),
 )
-
-# display a table with the detections shared between camera pairs
-# mcc.summarize_detections(all_calib_uvs)
-
+np.save(output_dir / "all_calib_uvs.npy", all_calib_uvs)
 # plot corner-match scores for each frame
 fig = mcc.plot_chessboard_qc_data(video_paths)
 fig.savefig(output_dir / "checkerboard_errors.png")
@@ -53,13 +52,12 @@ if overlay:
 
 # generate object points:
 calib_objpoints = mcc.generate_chessboard_objpoints(board_shape, square_size)
-s = slice(None, None)
 
 fl.save(
     output_dir / "args_calibration.h5",
     dict(
-        all_calib_uvs=all_calib_uvs[s],
-        all_img_sizes=all_img_sizes[s],
+        all_calib_uvs=all_calib_uvs,
+        all_img_sizes=all_img_sizes,
         calib_objpoints=calib_objpoints,
     ),
 )
@@ -68,7 +66,7 @@ fl.save(
 # Calibration
 # ================================
 all_extrinsics, all_intrinsics, calib_poses, spanning_tree = mcc.calibrate(
-    all_calib_uvs[:, s, :, :],
+    all_calib_uvs,
     all_img_sizes,
     calib_objpoints,
     root=0,
@@ -77,11 +75,6 @@ all_extrinsics, all_intrinsics, calib_poses, spanning_tree = mcc.calibrate(
 
 fig, shared_detections = mcc.plot_shared_detections(all_calib_uvs, spanning_tree)
 fig.savefig(output_dir / "shared_detections.png")
-
-valid = (
-    (~np.isnan(all_calib_uvs[1, :, 0, 0])) & (~np.isnan(all_calib_uvs[0, :, 0, 0]))
-).astype(int)
-print(f"Number of valid detections: {np.sum(valid)}")
 
 n_cameras, n_frames, N, _ = all_calib_uvs.shape
 
@@ -94,7 +87,7 @@ pts = mcc.embed_calib_objpoints(calib_objpoints, calib_poses)
 # Residuals
 # ================================
 errors_list = []
-for cam in tqdm.trange(n_cameras):
+for cam in trange(n_cameras):
     reprojections[cam] = mcc.project_points(
         pts, all_extrinsics[cam], all_intrinsics[cam][0]
     )
@@ -121,13 +114,12 @@ for i, errors in enumerate(errors_list):
     axs[i].plot(errors + i * 20, c=f"C{i}")
 f.savefig(output_dir / "residuals.png")
 
-s = slice(0, None)
 fig, median_error, reprojections, transformed_reprojections = mcc.plot_residuals(
-    all_calib_uvs[:, s, :, :],
+    all_calib_uvs,
     all_extrinsics,
     all_intrinsics,
     calib_objpoints,
-    calib_poses[s, :],
+    calib_poses,
     inches_per_axis=3,
 )
 fig.savefig(output_dir / "first_residuals.png")
@@ -158,45 +150,6 @@ fig, median_error, reprojections, transformed_reprojections = mcc.plot_residuals
 )
 fig.savefig(output_dir / "refined_residuals.png")
 
-def write_calibration_toml(output_path, cam_names, img_sizes, extrinsics, intrinsics, result):
-    """Write calibration data to TOML format"""
-    calibration_dict = dict()
-    for i, (cam_name, img_size, extrinsic, intrinsic) in enumerate(zip(cam_names, img_sizes, extrinsics, intrinsics)):
-        cam_dict = dict(
-            name=cam_name,
-            size=img_size.tolist(),
-            matrix=intrinsic[0].tolist(),
-            distortions=intrinsic[1].tolist(),
-            rotation=extrinsic[:3].tolist(),
-            translation=extrinsic[3:].tolist()
-        )
-        calibration_dict[f"cam_{i}"] = cam_dict
-    calibration_dict["metadata"] = dict(adjusted=True, error=float(result.cost))
-
-    with open(output_path, "w") as f:
-        toml.dump(calibration_dict, f)
-
-
-def read_calibration_toml(toml_path):
-    """Read calibration data from TOML format"""
-    with open(toml_path) as f:
-        calibration_dict = toml.load(f)
-    
-    n_cams = len([k for k in calibration_dict.keys() if k.startswith("cam_")])
-    cam_names = []
-    img_sizes = []
-    extrinsics = []
-    intrinsics = []
-    
-    for i in range(n_cams):
-        cam = calibration_dict[f"cam_{i}"]
-        cam_names.append(cam["name"])
-        img_sizes.append(np.array(cam["size"]))
-        extrinsics.append(np.concatenate([cam["rotation"], cam["translation"]]))
-        intrinsics.append((np.array(cam["matrix"]), np.array(cam["distortions"])))
-        
-    return cam_names, img_sizes, extrinsics, intrinsics
-
 # Write current calibration to TOML
 cam_names = [Path(p).stem.split("_")[-1].split(".avi")[0] for p in video_paths]
 write_calibration_toml(output_dir / "calibration_from_mc.toml", 
@@ -215,7 +168,7 @@ def triangulate_all_keypoints(
     progbar = tqdm if progress_bar else lambda x: x
     for i in progbar(range(calib_uvs.shape[2])):
         all_triang.append(
-            mcc.triangulate(calib_uvs[:, :, i, :], adj_extrinsics, adj_intrinsics)
+            triangulate(calib_uvs[:, :, i, :], adj_extrinsics, adj_intrinsics)
         )
 
     return np.array(all_triang)
