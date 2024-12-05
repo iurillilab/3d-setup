@@ -219,7 +219,23 @@ def triangulate(config,
 
 
 def triangulate_core(config, all_points_raw, all_scores, bodyparts, cgroup, output_fname):
-
+    """Core triangulation function.
+    
+    Parameters
+    ----------
+    config : dict
+        Configuration dictionary.
+    all_points_raw : np.ndarray
+        Raw 2D points. Shape is (n_cams, n_frames, n_joints, 2).
+    all_scores : np.ndarray
+        Scores for the 2D points. Shape is (n_cams, n_frames, n_joints).
+    bodyparts : list
+        List of bodypart names.
+    cgroup : CameraGroup
+        Camera group object.
+    output_fname : str
+        Output file name.
+    """
     n_cams, n_frames, n_joints, _ = all_points_raw.shape
 
     if config['triangulation']['optim']:
@@ -362,7 +378,8 @@ def triangulate_core(config, all_points_raw, all_scores, bodyparts, cgroup, outp
 
     dout['fnum'] = np.arange(n_frames)
 
-    dout.to_csv(output_fname, index=False)
+    # dout.to_csv(output_fname, index=False)
+    return dout
 
 
 def process_session(config, session_path):
