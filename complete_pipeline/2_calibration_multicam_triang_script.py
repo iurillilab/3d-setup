@@ -15,11 +15,13 @@ data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
 
 # Load last available calibration among mc_calibrarion_output_*
 calibration_paths = sorted(data_dir.glob("mc_calibration_output_*"))
-calibration_path = calibration_paths[-1]
-cam_names, img_sizes, extrinsics, intrinsics = read_calibration_toml(calibration_path / "calibration_from_mc.toml")
-all_calib_uvs = np.load(calibration_path / "all_calib_uvs.npy")
+last_calibration_path = calibration_paths[-1]
+
+all_calib_uvs = np.load(last_calibration_path / "all_calib_uvs.npy")
+calib_toml_path = last_calibration_path / "calibration_from_mc.toml"
+cam_names, img_sizes, extrinsics, intrinsics = read_calibration_toml(calib_toml_path)
+
 print(all_calib_uvs.shape)
-print(cam_names, img_sizes, extrinsics, intrinsics)
 
 # %%
 views_dss = []
@@ -49,34 +51,203 @@ views_ds
 
 # %%
 def triangulate_all_keypoints(
-    calib_uvs, adj_extrinsics, adj_intrinsics, progress_bar=True
+    xarray_dataset, calib_toml_path, progress_bar=True
 ):
+    cam_names, _, extrinsics, intrinsics = read_calibration_toml(calib_toml_path)
+
+    positions = xarray_dataset.position
+    confidence = xarray_dataset.confidence  # TODO implement confidence propagation
+
+    # use cam_names to sort the view axis, after having checked that the views are the same:
+    print(xarray_dataset.coords["view"].values, cam_names)
+    assert set(xarray_dataset.coords["view"].values) == set(cam_names), "Views do not match: " + str(list(positions.coords["view"])) + " vs " + str(cam_names)
+    positions = positions.sel(view=cam_names)
+    print(positions.coords["view"].values)
+    
+    # get first individual, regarless of its name:
+    positions = positions.sel(individuals=positions.coords["individuals"][0], drop=True)
+
+    # enforce order:
+    positions = positions.transpose("view", "time", "keypoints", "space").values
     all_triang = []
-    progbar = tqdm if progress_bar else lambda x: x
-    for i in progbar(range(calib_uvs.shape[2])):
-        all_triang.append(
-            mcc_geom.triangulate(calib_uvs[:, :, i, :], adj_extrinsics, adj_intrinsics)
-        )
+    for i in tqdm(range(len(xarray_dataset.coords["keypoints"])), "Triangulating keypoints: ", 
+                  disable=not progress_bar):
+        triang = mcc_geom.triangulate(positions[:, :, i, :], extrinsics, intrinsics)
+        all_triang.append(triang)
 
-    return np.array(all_triang)
+    threed_coords = np.array(all_triang)  # shape n_keypoints, n_frames, 3
+    # reshape to n_frames, 1, n_keypoints, 3
+    threed_coords = threed_coords.transpose(1, 0, 2)[:, np.newaxis, :, :]
+    # TODO propagate confidence smartly
+    confidence_array = np.ones(threed_coords.shape[:-1])
 
-checkboard_3d = triangulate_all_keypoints(all_calib_uvs, extrinsics, intrinsics)
+    return from_numpy(position_array=threed_coords,
+               confidence_array=confidence_array,
+               individual_names=xarray_dataset.coords["individuals"].values,
+               keypoint_names=xarray_dataset.coords["keypoints"].values,
+               source_software=xarray_dataset.attrs["source_software"] + "_triangulated",
+               )
 
-non_nan_idxs = np.where(~np.isnan(checkboard_3d).any(axis=(0, 2)))[0]
-frame_idx = non_nan_idxs[0]
-checkboard_frame = checkboard_3d[:, frame_idx, :]
-checkboard_trail = checkboard_3d[0, :, :]
+# %%
+checkboard_3d = triangulate_all_keypoints(views_ds, calib_toml_path)
 
-fig = plt.figure()
-ax = fig.add_subplot(projection="3d")
-ax.scatter(checkboard_frame[:, 0], checkboard_frame[:, 1], checkboard_frame[:, 2])
-ax.scatter(checkboard_trail[:, 0], checkboard_trail[:, 1], checkboard_trail[:, 2], s=5)
+# %%
+def plot_3d_points_and_trail(coords_array, individual_name="checkerboard", trail=True):
+    """Plot 3D points for a single frame and the trail of first point over time"""
+    coords_array = coords_array.position.sel(individuals=individual_name).values
+    non_nan_idxs = np.where(~np.isnan(coords_array).any(axis=(1, 2)))[0]
+    frame_idx = non_nan_idxs[0]
+    frame_points = coords_array[frame_idx, :, :]
+    point_trail = coords_array[:, 0, :]
 
-ax.set_xlabel("X Label")
-ax.set_ylabel("Y Label")
-ax.set_zlabel("Z Label")
-plt.axis("equal")
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+    ax.scatter(frame_points[:, 0], frame_points[:, 1], frame_points[:, 2])
+    if trail:
+        ax.scatter(point_trail[:, 0], point_trail[:, 1], point_trail[:, 2], s=5)
+
+    ax.set_xlabel("X Label")
+    ax.set_ylabel("Y Label")
+    ax.set_zlabel("Z Label")
+    plt.axis("equal")
+    return fig
+
+# %%
+fig = plot_3d_points_and_trail(checkboard_3d)
 plt.show()
+
+# %%
+other_toml_to_test = "/Users/vigji/Desktop/test-anipose/cropped_calibration_vid/anipose_calib/calibration.toml"
+checkboard_anipose = triangulate_all_keypoints(views_ds, other_toml_to_test)
+
+# %%
+fig = plot_3d_points_and_trail(checkboard_anipose, trail=False)
+plt.show()
+
+# %%
+
+# ===============================================
+# Test anipose triangulation
+# ===============================================
+from threed_utils.anipose.triangulate import CameraGroup, triangulate_core
+calib_config = dict(board_type="checkerboard",
+                board_size=(5, 7),
+                board_square_side_length=12.5,
+                animal_calibration=False,
+                calibration_init=None,
+                fisheye=False)
+
+triang_config = {
+    # "cam_regex": r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)+$",
+    "ransac": False,
+    "optim": False,
+    "optim_chunking": True,
+    "optim_chunking_size": 100,
+    "score_threshold": 0.0,
+}
+manual_verification_config = dict(manually_verify=False)
+
+config = dict(calibration=calib_config, 
+              triangulation=triang_config,
+              manual_verification=manual_verification_config,
+              )
+
+calib_fname = str(calib_toml_path)
+cgroup = CameraGroup.load(calib_fname)
+
+output_fname = data_dir / "test_triangulation_anypose.csv"
+time_slice = slice(0, 1000)
+reshaped_ds = views_ds.sel(individuals="checkerboard", time=time_slice).transpose("view", "time", "keypoints", "space")
+positions = reshaped_ds.position.values
+scores = reshaped_ds.confidence.values
+# (n_cams, n_frames, n_joints, 2)
+triang_df = triangulate_core(config, 
+                 positions, 
+                 scores, 
+                 views_ds.coords["keypoints"].values, 
+                 cgroup, 
+                 output_fname)
+
+
+# %%
+triang_df.columns
+# %%
+# Reshape dataframe with columns keypoint1_x, keypoint1_y, keypoint1_z, keypoint1_confidence_score, 
+# keypoint2_x, keypoint2_y, keypoint2_z, keypoint2_confidence_score, ...
+# to array of positions with dimensions time, individuals, keypoints, space,
+# and array of confidence scores with dimensions time, individuals, keypoints
+
+# Get list of unique keypoint names by removing _x, _y, _z, _error, _ncams, _score suffixes
+
+keypoint_names = sorted(list(set([col.rsplit('_', 1)[0] for col in triang_df.columns 
+                               if any(col.endswith(f'_{s}') for s in ['x','y','z'])])))
+
+n_frames = len(triang_df)
+n_keypoints = len(keypoint_names)
+
+# Initialize arrays and fill
+position_array = np.zeros((n_frames, 1, n_keypoints, 3))  # 1 for single individual
+confidence_array = np.zeros((n_frames, 1, n_keypoints))
+for i, kp in enumerate(keypoint_names):
+    for j, coord in enumerate(['x', 'y', 'z']):
+        position_array[:, 0, i, j] = triang_df[f'{kp}_{coord}']
+    confidence_array[:, 0, i] = triang_df[f'{kp}_score']
+
+individual_names = ['checkerboard']
+
+anipose_triang_ds = from_numpy(position_array=position_array, 
+                                confidence_array=confidence_array,
+                                individual_names=individual_names,
+                                keypoint_names=keypoint_names,
+                                source_software="'anipose_triangulation",
+                                )
+
+# triang_ds
+# %%
+fig = plot_3d_points_and_trail(anipose_triang_ds, trail=True)
+plt.show()
+
+# %%
+# %%
+
+
+
+# from threed_utils.anipose.common import get_cam_name
+from threed_utils.anipose.triangulate import triangulate_core, CameraGroup
+from movement.io.load_poses import from_file, from_multiview_files
+import pickle
+import re
+import numpy as np
+import pandas as pd
+
+
+from pathlib import Path
+
+data_dir = Path("/Users/vigji/Desktop/test-anipose")
+calibration_dir = data_dir / "cropped_calibration_vid" / "anipose_calib"
+slp_files_dir = data_dir / "test_slp_files"
+slp_files = list(slp_files_dir.glob("*.slp"))
+file_path_dict = {re.search(triang_config['cam_regex'], str(f.name)).groups()[0]: f for f in slp_files}
+# From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
+views_list = list(file_path_dict.keys())
+new_coord_views = xr.DataArray(views_list, dims="view")
+
+dataset_list = [
+    from_file(f, source_software="SLEAP")
+    for f in file_path_dict.values()
+]
+# make coordinates labels of the keypoints axis all lowercase
+for ds in dataset_list:
+    ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
+
+time_slice = slice(0, 1000)
+ds = xr.concat(dataset_list, dim=new_coord_views).sel(time=time_slice, individuals="individual_0", drop=True)
+
+bodyparts = list(ds.coords["keypoints"].values)
+
+print(ds.position.shape, ds.confidence.shape, bodyparts)
+
+
 # fig.savefig(output_dir / "triangulated_frame.png")
 
 
@@ -213,3 +384,4 @@ plt.show()
 #     "intrinsics": adj_intrinsics,
 # }
 # pickle.dump(calib_data, open(r"../tests/assets/arena_tracked_points.pkl", "wb"))
+# %%
