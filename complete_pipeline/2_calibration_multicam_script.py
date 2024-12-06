@@ -10,7 +10,7 @@ from pathlib import Path
 from tqdm import tqdm
 from datetime import datetime
 import flammkuchen as fl
-from utils import write_calibration_toml
+from threed_utils.io import write_calibration_toml
 
 from tqdm import tqdm, trange
 import cv2
@@ -19,13 +19,15 @@ import cv2
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 board_shape = (5, 7)
 square_size = 12.5
-data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
+# data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
+data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240726\Calibration\multicam_video_2024-07-26T11_40_54_cropped_20240726164916")
 output_dir = data_dir / f"mc_calibration_output_{timestamp}"
 output_dir.mkdir(exist_ok=True)
 
 video_paths = [
     f for f in data_dir.iterdir() if f.suffix == ".mp4" and "overlay" not in f.stem
 ]
+
 camera_names = [p.stem.split("_")[-1].split(".avi")[0] for p in video_paths]
 print(camera_names)
 

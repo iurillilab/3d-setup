@@ -1,3 +1,4 @@
+#%%
 import os
 import pathlib
 import re
@@ -9,7 +10,7 @@ import numpy as np
 
 
 from sleap import Labels
-
+#%%
 
 
 labels = Labels.load_file(r"D:\SLEAP_models\SLEAP_side_models\labels.v001.slp")
@@ -19,20 +20,54 @@ video_paths = [video.filename for video in labels.videos]
 print(video_paths)
 
 
-
+#%%
 # SLEAP models:
 
 
 side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
 bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161"
 
+# quick sanity check to control that the model has run inference on all the videos
 
 
-
+#%%
 
 
 # function to iterate through all the mice videos and select the paths of all videos except the bottom one.
+import datetime 
 
+def get_last_modified_file(directory, extension):
+    files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.slp')]
+    print(files)
+    if not files:
+        return None
+    else:
+        last_modified = max(files, key=os.path.getmtime)
+        return last_modified
+
+
+
+#for each video path, check in the directory has a file created yesterday
+last_per_video =[]
+for video_path in video_paths:
+    directory = os.path.dirname(video_path)
+    if os.path.isdir(directory):
+        last_modified = get_last_modified_file(directory, '.slp')
+        last_per_video.append(last_modified)
+
+print(len(video_paths), len(last_per_video))
+
+for last in last_per_video:
+    if last is not None:
+        m_time = os.path.getmtime(last)
+        # convert timestamp into DateTime object
+        dt_m = datetime.datetime.fromtimestamp(m_time)
+        print('Modified on:', dt_m)
+
+
+ 
+
+#%%
 
 def get_video_paths(main_path):
     """
@@ -119,3 +154,8 @@ if __name__ == "__main__":
     run_inference(video_paths, side_model)
     # run_inference(bottom_paths, bottom_model)
     print("Inference done!")
+
+
+
+
+# %%

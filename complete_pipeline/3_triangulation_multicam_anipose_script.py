@@ -13,8 +13,8 @@ from threed_utils.io import movement_ds_from_anipose_triangulation_df, read_cali
 from threed_utils.anipose.triangulate import CameraGroup, triangulate_core
 
 
-data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
-
+# data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
+data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240726\Calibration\multicam_video_2024-07-26T11_40_54_cropped_20240726164916")
 # Read checkerboard detections as movement dataset
 
 # Load last available calibration among mc_calibrarion_output_*
@@ -23,6 +23,7 @@ last_calibration_path = calibration_paths[-1]
 
 all_calib_uvs = np.load(last_calibration_path / "all_calib_uvs.npy")
 calib_toml_path = last_calibration_path / "calibration_from_mc.toml"
+print(calib_toml_path)
 cam_names, img_sizes, extrinsics, intrinsics = read_calibration_toml(calib_toml_path)
 
 print(all_calib_uvs.shape)
@@ -52,6 +53,7 @@ views_ds = xr.concat(views_dss, dim=new_coord_views)
 
 time_slice = slice(145, 1000)
 views_ds = views_ds.sel(time=time_slice, drop=True)
+
 
 
 # %%
@@ -94,6 +96,12 @@ def mcc_triangulate_ds(
                )
 
 mcc_triangulated_ds = mcc_triangulate_ds(views_ds, calib_toml_path)
+
+
+#%%
+
+mcc_triangulated_ds.info
+
 
 # %%
 # ===============================================
@@ -184,7 +192,7 @@ for index in [0]:
     trail = True
     plot_3d_points_and_trail(mcc_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
     plot_3d_points_and_trail(anipose_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
-    plot_3d_points_and_trail(anipose_triangulated_ds_optim, ax=ax, frame_idx=index, trail=trail)
+    # plot_3d_points_and_trail(anipose_triangulated_ds_optim, ax=ax, frame_idx=index, trail=trail)
     plt.show()
 
 
@@ -195,11 +203,18 @@ for index in [0]:
 # data_dir = Path("/Users/vigji/Desktop/test-anipose")
 import re
 from movement.io.load_poses import from_file
-print(data_dir)
-slp_files_dir = data_dir.parent / "test_slp_files"
+# print(data_dir)
+# slp_files_dir = data_dir.parent / "test_slp_files"
+
+slp_files_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\sample_video_for_triangulation\multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
 slp_files = list(slp_files_dir.glob("*.slp"))
 print(slp_files)
+
 cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)+$"
+
+
+
+
 file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
 # From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
 views_list = list(file_path_dict.keys())
@@ -244,5 +259,21 @@ anipose_triangulated_ds_optim = anipose_triangulate_ds(ds,
 
 
 # %%
-ds
+mcc_triangulated_ds.info
+
+anipose_triangulated_ds_optim.info
 # %%
+# save the results to share with me
+anipose_triangulated_ds_optim.attrs['fps'] = 'fps'
+mcc_triangulated_ds.attrs['fps'] = 'fps'
+
+anipose_triangulated_ds_optim.attrs['source_file'] = 'anipose'
+mcc_triangulated_ds.attrs['source_file'] = 'mcc'
+
+mcc_triangulated_ds.to_netcdf(slp_files_dir / "mcc_triangulated_ds.h5")
+anipose_triangulated_ds_optim.to_netcdf(slp_files_dir / "anipose_triangulated_ds.h5")
+
+
+#%%
+
+
