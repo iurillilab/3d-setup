@@ -127,7 +127,7 @@ triangulate_core(config, ds.position.values, ds.confidence.values, bodyparts, cg
 triang_ds = pd.read_csv(output_fname)
 print(triang_ds.head())
 
-
+# %%
 from matplotlib import pyplot as plt
 
 plt.plot(triang_ds['blimbmid_x'], triang_ds['blimbmid_y'])

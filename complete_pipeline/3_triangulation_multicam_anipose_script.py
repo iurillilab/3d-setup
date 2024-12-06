@@ -15,6 +15,8 @@ from threed_utils.anipose.triangulate import CameraGroup, triangulate_core
 
 data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
 
+# Read checkerboard detections as movement dataset
+
 # Load last available calibration among mc_calibrarion_output_*
 calibration_paths = sorted(data_dir.glob("mc_calibration_output_*"))
 last_calibration_path = calibration_paths[-1]
@@ -25,7 +27,6 @@ cam_names, img_sizes, extrinsics, intrinsics = read_calibration_toml(calib_toml_
 
 print(all_calib_uvs.shape)
 
-# %%
 # Temporary patch for loading checkerboard data as dataset:
 views_dss = []
 for n_view, view in enumerate(cam_names):
@@ -106,7 +107,8 @@ def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
     calib_fname = str(calib_toml_path)
     cgroup = CameraGroup.load(calib_fname)
 
-    reshaped_ds = views_ds.sel(individuals="checkerboard", time=time_slice).transpose("view", "time", "keypoints", "space")
+    individual_name = views_ds.coords["individuals"][0]
+    reshaped_ds = views_ds.sel(individuals=individual_name, time=time_slice).transpose("view", "time", "keypoints", "space")
     positions = reshaped_ds.position.values
     scores = reshaped_ds.confidence.values
 
@@ -120,13 +122,13 @@ def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
 
 
 triang_config = {
-    "ransac": False,
+    "ransac": True,
     "optim": False,
 }
 anipose_triangulated_ds = anipose_triangulate_ds(views_ds, calib_toml_path, **triang_config)
 
 triang_config_optim = {
-    "ransac": False,
+    "ransac": True,
     "optim": True,
     "optim_chunking": True,
     "optim_chunking_size": 100,
@@ -139,12 +141,12 @@ triang_config_optim = {
     "constraints": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
     "constraints_weak": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
 }
-de_nanned = views_ds.copy()
-de_nanned.position.values[np.isnan(de_nanned.position.values)] = 0
+# de_nanned = views_ds.copy()
+# de_nanned.position.values[np.isnan(de_nanned.position.values)] = 0
 
 # subtract random val between 0 and 1 to confidences:
-de_nanned.confidence.values -= np.random.rand(*de_nanned.confidence.values.shape)
-anipose_triangulated_ds_optim = anipose_triangulate_ds(de_nanned.sel(time=slice(145, 1000)), 
+# de_nanned.confidence.values -= np.random.rand(*de_nanned.confidence.values.shape)
+anipose_triangulated_ds_optim = anipose_triangulate_ds(views_ds, 
                                                        calib_toml_path, 
                                                        **triang_config_optim)
 
@@ -178,19 +180,69 @@ def plot_3d_points_and_trail(coords_array, ax=None, individual_name="checkerboar
 
 fig = plt.figure()
 ax = fig.add_subplot(projection="3d")
-for index in [0, 10, 20]:
-    trail = False
+for index in [0]:
+    trail = True
     plot_3d_points_and_trail(mcc_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
     plot_3d_points_and_trail(anipose_triangulated_ds, ax=ax, frame_idx=index, trail=trail)
+    plot_3d_points_and_trail(anipose_triangulated_ds_optim, ax=ax, frame_idx=index, trail=trail)
     plt.show()
 
 
 # %%
-non_nans = ~np.isnan(mcc_triangulated_ds.position.values).any(axis=(1, 2, 3))
-non_nans &= ~np.isnan(anipose_triangulated_ds.position.values).any(axis=(1, 2, 3))
-non_nans_idxs = np.where(non_nans)[0]
-print(non_nans_idxs)
-print(np.diff(non_nans_idxs), np.argwhere(np.diff(non_nans_idxs) > 1))
+# ===============================================
+# Sleap coordinates triangulation
+# ===============================================
+# data_dir = Path("/Users/vigji/Desktop/test-anipose")
+import re
+from movement.io.load_poses import from_file
+print(data_dir)
+slp_files_dir = data_dir.parent / "test_slp_files"
+slp_files = list(slp_files_dir.glob("*.slp"))
+print(slp_files)
+cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)+$"
+file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
+# From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
+views_list = list(file_path_dict.keys())
+new_coord_views = xr.DataArray(views_list, dims="view")
+
+dataset_list = [
+    from_file(f, source_software="SLEAP")
+    for f in file_path_dict.values()
+]
+# make coordinates labels of the keypoints axis all lowercase
+for ds in dataset_list:
+    ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
+
+time_slice = slice(0, 1000)
+ds = xr.concat(dataset_list, dim=new_coord_views).sel(time=time_slice)
+
+bodyparts = list(ds.coords["keypoints"].values)
+
+print(ds.position.shape, ds.confidence.shape, bodyparts)
+
+triang_config_optim = {
+    "ransac": True,
+    "optim": True,
+    "optim_chunking": True,
+    "optim_chunking_size": 100,
+    "score_threshold": 0.0,
+    "scale_smooth": 4,
+    "scale_length": 2,
+    "scale_length_weak": 0.5,
+    "n_deriv_smooth": 2,
+    "reproj_error_threshold": 150,
+    "constraints": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+    "constraints_weak": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+}
+
+mcc_triangulated_ds = mcc_triangulate_ds(ds, calib_toml_path)
+
+anipose_triangulated_ds_optim = anipose_triangulate_ds(ds, 
+                                                       calib_toml_path, 
+                                                       **triang_config_optim)
+
+
+
 # %%
-mcc_triangulated_ds.position.values.shape
+ds
 # %%

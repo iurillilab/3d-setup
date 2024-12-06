@@ -156,7 +156,6 @@ write_calibration_toml(output_dir / "calibration_from_mc.toml",
                       cam_names, all_img_sizes, adj_extrinsics, adj_intrinsics, result)
 
 
-
 # ================================
 # Test triangulation
 # ================================
