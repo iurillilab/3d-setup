@@ -10,116 +10,43 @@ import pickle
 import multicam_calibration as mcc
 from mpl_toolkits.mplot3d import Axes3D
 
+#%%
+arena_path = '/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/3d-setup/tests/assets/arena_tracked_points.pkl'
+with open(arena_path, 'rb') as f:
+    arena_points = pickle.load(f)
+
+arena_2d =arena_points['points']['arena_coordinates']
+
+intrinsics = arena_points['intrinsics']
+
+extrinsics = arena_points['extrinsics']
+
 # %%
 
-# with open(r'C:\Users\SNeurobiology\code\3d-setup\tests\assets\arena_tracked_points.pkl', 'rb') as f:
-#     arena_triangulation = pickle.load(f)
-
-with open('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/3d-setup/tests/assets/arena_tracked_points.pkl', 'rb') as f:
-    arena_triangulation = pickle.load(f)
-
-
-# Load the calibration data
-adj_intrinsics = arena_triangulation['intrinsics']
-adj_extrinsics = arena_triangulation['extrinsics']
-calib_uvs = arena_triangulation['points']
-#%%
-calib_uvs['tracked_points'].shape
-
-
-# %%
-def moving_average_filter(data, window_size=5):
-    """
-    Apply a moving average filter to smooth data across all cameras.
-    
-    Args:
-        data: np.array of shape (5, 200, 13, 2)
-              5 cameras, 200 frames, 13 keypoints, 2 dimensions (x, y)
-        window_size: Size of the moving window
-    
-    Returns:
-        Smoothed data of the same shape
-    """
-    smoothed_data = np.empty_like(data)
-    for camera_idx in range(data.shape[0]):  # Iterate over cameras
-        for keypoint_idx in range(data.shape[2]):  # Iterate over keypoints
-            for dim in range(data.shape[3]):  # Iterate over dimensions (x, y)
-                smoothed_data[camera_idx, :, keypoint_idx, dim] = np.convolve(
-                    data[camera_idx, :, keypoint_idx, dim], 
-                    np.ones(window_size) / window_size, 
-                    mode='same'
-                )
-    return smoothed_data
-
-# Example usage
-smoothed_2d_points = moving_average_filter(calib_uvs['tracked_points'])
-
-
-#%%
-
-# function to triangulate all the keypoints
-# TODO: move the function inside the triangulation.py file
-def triangulate_all_keypoints(
-    calib_uvs, adj_extrinsics, adj_intrinsics, progress_bar=True
-):
+def triangulate_keypoints(keypoints_2d, intrinsics, extrinsics):
     all_triang = []
-    progbar = tqdm if progress_bar else lambda x: x
-    for i in progbar(range(calib_uvs.shape[2])):
+    for i in tqdm(range(keypoints_2d.shape[2])):
         all_triang.append(
-            mcc.triangulate(calib_uvs[:, :, i, :], adj_extrinsics, adj_intrinsics)
+            mcc.triangulate(
+                keypoints_2d[:, :, i, [1, 0]], extrinsics, intrinsics
+            )
         )
-
-    return np.array(all_triang)
-
-# %%
-# triangualte points
-
-#TODO: save arena points with right format of calibration [..., [1, 0]]
-points_3d = triangulate_all_keypoints(smoothed_2d_points, adj_extrinsics, adj_intrinsics)
-
-arena_3d = triangulate_all_keypoints(calib_uvs['arena_coordinates'][...,[1, 0]], adj_extrinsics, adj_intrinsics)
+    all_triang = np.array(all_triang)
+    return all_triang
+arena_3d = triangulate_keypoints(arena_2d, intrinsics, extrinsics)
+arena_3d = arena_3d.squeeze()
 
 # %%
-# from pykalman import KalmanFilter
+import xarray as xr
+triangulation_path = '/Users/thomasbush/Downloads/anipose_triangulated_ds.h5'
+mcc_path = '/Users/thomasbush/Downloads/mcc_triangulated_ds.h5'
+anipose_ds = xr.open_dataset(triangulation_path)
+mcc_ds = xr.open_dataset(mcc_path)
 
-# def kalman_filter_3d(points_3d):
-#     """
-#     Apply a Kalman filter to smooth 3D points.
-    
-#     Args:
-#         points_3d: np.array of shape (n_keypoints, n_frames, 3)
-    
-#     Returns:
-#         Smoothed 3D points
-#     """
-#     n_keypoints, n_frames, _ = points_3d.shape
-#     smoothed_points = np.zeros_like(points_3d)
-    
-#     for i in range(n_keypoints):
-#         kf = KalmanFilter(initial_state_mean=points_3d[i, 0], n_dim_obs=3)
-#         smoothed_state_means, _ = kf.smooth(points_3d[i])
-#         smoothed_points[i] = smoothed_state_means
-    
-#     return smoothed_points
 
-# smoothed_3d_points = kalman_filter_3d(points_3d)
-# %%
-def median_filter_3d(points_3d, kernel_size=5):
-    """
-    Apply median filter for outlier removal
-    """
-    from scipy.signal import medfilt
-    filtered = np.zeros_like(points_3d)
-    
-    for i in range(points_3d.shape[0]):
-        for j in range(3):
-            filtered[i, :, j] = medfilt(points_3d[i, :, j], kernel_size)
-    
-    return filtered
-
-median_filtered_3d_points = median_filter_3d(points_3d)
 #%%
 
+#%%
 
 
 def animator_3d_plotly(tracked_points_sample, arena_triangulation, skeleton=None):
@@ -308,8 +235,198 @@ def animator_3d_plotly_v02(tracked_points_sample, arena_triangulation, skeleton=
     fig.frames = animato_frames
     return fig
 
+def animator_3d_plotly_xarray(datasets, arena_triangulation=None, labels=None, skeleton=None, speed=200, 
+                            visible_datasets=None, save_path=None):
+    """
+    Create 3D animation from multiple xarray datasets containing pose data
+    
+    Args:
+        datasets: List of xarray datasets or single dataset with dimensions:
+                 (time, individuals, keypoints, space)
+        arena_triangulation: np.array of arena points (optional)
+        labels: List of labels for each dataset (optional)
+        skeleton: List of tuples defining connections between points
+        speed: Animation speed in milliseconds per frame
+        visible_datasets: List of booleans to toggle visibility of each dataset (optional)
+        save_path: Path to save the animation as HTML (optional)
+    """
+    # Convert single dataset to list
+    if not isinstance(datasets, list):
+        datasets = [datasets]
+    
+    # Set default labels if none provided
+    if labels is None:
+        labels = [f'Dataset {i+1}' for i in range(len(datasets))]
+    
+    # Set default visibility if none provided
+    if visible_datasets is None:
+        visible_datasets = [True] * len(datasets)
+    
+    # Define colors for different datasets
+    dataset_colors = px.colors.qualitative.Set3
+    skeleton_colors = ['rgba(100, 100, 100, 0.8)', 'rgba(150, 150, 150, 0.8)', 
+                      'rgba(200, 200, 200, 0.8)']
+    
+    # Default skeleton definition (indices 0-12)
+    if skeleton is None:
+        skeleton = [(0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (5, 6), (6, 7),
+                   (1, 8), (8, 9), (9, 10), (10, 11), (11, 12)]
+    
+    # Get number of frames (assume all datasets have same length)
+    n_frames = datasets[0].dims['time']
+    
+    animato_frames = []
+    for frame_idx in range(n_frames):
+        frame_data = []
+        
+        # Add arena if provided
+        if arena_triangulation is not None:
+            arena_mesh = go.Mesh3d(
+                x=arena_triangulation.squeeze()[:, 0],
+                y=arena_triangulation.squeeze()[:, 1],
+                z=arena_triangulation.squeeze()[:, 2],
+                color='rgba(200, 200, 200, 0.3)',
+                name='arena',
+                alphahull=0,
+                visible=True,  # Initial visibility state
+                showlegend=True  # Show in legend for toggle
+            )
+            frame_data.append(arena_mesh)
+        
+        # Add data for each dataset
+        for ds_idx, (ds, label, is_visible) in enumerate(zip(datasets, labels, visible_datasets)):
+            if not is_visible:
+                continue
+                
+            # Extract points for current frame
+            points = ds.position.isel(time=frame_idx, individuals=0).values
+            keypoint_labels = ds.keypoints.values
+            
+            # Add scatter plot for points
+            scatter = go.Scatter3d(
+                x=points[:, 0],
+                y=points[:, 1],
+                z=points[:, 2],
+                mode='markers',
+                marker=dict(
+                    size=6,
+                    color=dataset_colors[ds_idx],
+                    opacity=0.8,
+                ),
+                name=label,
+                text=[f'{label} {kp}' for kp in keypoint_labels],
+                hoverinfo='text+x+y+z'
+            )
+            frame_data.append(scatter)
+            
+            # Add skeleton lines
+            for start, finish in skeleton:
+                line = go.Scatter3d(
+                    x=[points[start, 0], points[finish, 0]],
+                    y=[points[start, 1], points[finish, 1]],
+                    z=[points[start, 2], points[finish, 2]],
+                    mode='lines',
+                    line=dict(
+                        width=2,
+                        color=skeleton_colors[ds_idx % len(skeleton_colors)]
+                    ),
+                    name=f'{label} skeleton',
+                    showlegend=False
+                )
+                frame_data.append(line)
+        
+        animato_frames.append(go.Frame(data=frame_data, name=str(frame_idx)))
+    
+    # Create figure with first frame
+    fig = go.Figure(data=animato_frames[0].data)
+    
+    # Update layout with legend for arena toggle
+    fig.update_layout(
+        scene=dict(
+            camera=dict(
+                up=dict(x=0, y=0, z=1),
+                center=dict(x=0, y=0, z=0),
+                eye=dict(x=1.5, y=1.5, z=1.5)
+            ),
+            aspectmode='data'
+        ),
+        showlegend=True,  # Show legend for arena toggle
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        ),
+        updatemenus=[dict(
+            type='buttons',
+            showactive=False,
+            x=0,
+            y=0,
+            xanchor='left',
+            yanchor='top',
+            pad=dict(t=0, r=10),
+            buttons=[
+                dict(
+                    label='Play',
+                    method='animate',
+                    args=[None, {
+                        'frame': {'duration': speed, 'redraw': True},
+                        'fromcurrent': True,
+                        'transition': {'duration': 0},
+                        'mode': 'immediate'
+                    }]
+                ),
+                dict(
+                    label='Pause',
+                    method='animate',
+                    args=[[None], {
+                        'frame': {'duration': 0, 'redraw': False},
+                        'mode': 'immediate',
+                        'transition': {'duration': 0}
+                    }]
+                )
+            ]
+        )],
+        sliders=[dict(
+            currentvalue=dict(
+                font=dict(size=12),
+                prefix='Frame: ',
+                visible=True,
+                xanchor='right'
+            ),
+            pad=dict(b=10, t=50),
+            len=0.9,
+            x=0.1,
+            y=0,
+            steps=[dict(
+                args=[[f.name], dict(mode='immediate', frame=dict(duration=speed, redraw=True))],
+                label=str(k),
+                method='animate'
+            ) for k, f in enumerate(animato_frames)]
+        )]
+    )
+    
+    fig.frames = animato_frames
+    
+    # Save if path provided
+    if save_path:
+        import os
+        # Convert to absolute path if relative path is given
+        save_path = os.path.abspath(save_path)
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        fig.write_html(save_path)
+        print(f"Animation saved to: {save_path}")
+    
+    return fig
+
 if __name__ == "__main__":
-    fig = animator_3d_plotly_v02(median_filtered_3d_points , arena_3d)
-    # fig.show()
-    fig.write_html("update_3d_animation.html")
-    print('hi')# %%
+    fig = animator_3d_plotly_xarray(
+        datasets=[anipose_ds, mcc_ds],
+        arena_triangulation=arena_3d,
+        labels=['Anipose', 'MCC'],
+        visible_datasets=[True, True],
+        speed=150, 
+        save_path='animation.html'
+    )
+    fig.show()
