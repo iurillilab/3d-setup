@@ -1,6 +1,12 @@
 import datetime
 import json
 from pathlib import Path
+import os
+import re
+import subprocess
+
+from pathlib import Path
+import numpy as np
 
 from tqdm import tqdm
 from utils import crop_all_views
@@ -11,9 +17,26 @@ MODELS_LOCATIONS = {
 }
 
 MODELS_MAP_TO_VIEW = {
-    "side": [],
+    "side": ['mirror-top', 'mirror-bottom', 'mirror-left', 'mirror-right'],
     "bottom": ["central"]
 }
+def run_inference(video, model):
+    """
+    Input: video_paths: list: list of paths to all the videos in the main folder
+    It runs the model inference on the encoded videos and saves the results in a specific folder.
+    """
+    video_path = str(video)
+    output_folder = video_path.replace('.avi.mp4', "predictions.slp")
+    conda_act = 'conda activate sleap'
+    conda_deact = 'conda deactivate'
+    command = f"{conda_act} && sleap-track -m {model} -o {output_folder} {video} && {conda_deact}"
+
+    print(f"Running inference on video: {video}")
+    try:
+        subprocess.run(command, check=True, shell=True, text=True)
+        print(f"Inference results saved to: {output_folder}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running comman {output_folder}, error: {e}, for video: {video}")
 
 
 def process_videos_in_folder(folder, json_file, timestamp):
@@ -55,6 +78,8 @@ def process_videos_in_folder(folder, json_file, timestamp):
     for avi_file in tqdm(avi_files):
         output_dir = avi_file.parent / f"{avi_file.stem}_cropped_{timestamp}"
         cropped_filenames = crop_all_views(avi_file, output_dir, json_file, verbose=False)
+        print(cropped_filenames, '\n', type(cropped_filenames))
+        cropped_filenames = [f.result() for f in cropped_filenames]
 
         # TODO process cropped videos usin run_inference:
         for model_name, views in MODELS_MAP_TO_VIEW.items():
