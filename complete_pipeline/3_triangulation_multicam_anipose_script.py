@@ -13,8 +13,8 @@ from threed_utils.io import movement_ds_from_anipose_triangulation_df, read_cali
 from threed_utils.anipose.triangulate import CameraGroup, triangulate_core
 
 
-# data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
-data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240726\Calibration\multicam_video_2024-07-26T11_40_54_cropped_20240726164916")
+data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
+# data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240726\Calibration\multicam_video_2024-07-26T11_40_54_cropped_20240726164916")
 # Read checkerboard detections as movement dataset
 
 # Load last available calibration among mc_calibrarion_output_*
@@ -133,7 +133,7 @@ triang_config = {
     "ransac": True,
     "optim": False,
 }
-anipose_triangulated_ds = anipose_triangulate_ds(views_ds, calib_toml_path, **triang_config)
+triang_df, anipose_triangulated_ds = anipose_triangulate_ds(views_ds, calib_toml_path, **triang_config)
 
 triang_config_optim = {
     "ransac": True,
@@ -153,7 +153,7 @@ triang_config_optim = {
 # de_nanned.position.values[np.isnan(de_nanned.position.values)] = 0
 
 # subtract random val between 0 and 1 to confidences:
-# de_nanned.confidence.values -= np.random.rand(*de_nanned.confidence.values.shape)
+de_nanned.confidence.values -= np.random.rand(*de_nanned.confidence.values.shape)
 anipose_triangulated_ds_optim = anipose_triangulate_ds(views_ds, 
                                                        calib_toml_path, 
                                                        **triang_config_optim)
@@ -277,3 +277,8 @@ anipose_triangulated_ds_optim.to_netcdf(slp_files_dir / "anipose_triangulated_ds
 #%%
 
 
+[col for col in triang_df.columns if col.startswith("0_")]
+all_cols = triang_df.columns.copy()
+
+[col for col in all_cols if not any([col.startswith(f"{i}_") for i in range(35)])]
+# %%

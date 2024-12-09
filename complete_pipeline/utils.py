@@ -72,6 +72,8 @@ def crop_all_views(
     if verbose:
         print(f"Elapsed time: {datetime.datetime.now() - tnow}")
 
+    return futures
+
 
 def apply_transformations(
     input_file,
@@ -116,8 +118,9 @@ def apply_transformations(
             ["-vframes", str(num_frames)]
         )  # Number of frames to process
 
+    output_file = output_dir / f"{input_file.stem}_{output_suffix}.mp4"
     ffmpeg_command.append(
-        f"{output_dir / input_file.stem}_{output_suffix}.mp4"
+        str(output_file)
     )  # Output file
 
     # Run the FFmpeg command
@@ -125,6 +128,8 @@ def apply_transformations(
     if not verbose:
         additional_kwargs = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     subprocess.run(ffmpeg_command, check=True, **additional_kwargs)
+
+    return output_file
 
 
 def read_first_frame(input_file):

@@ -5,6 +5,16 @@ from pathlib import Path
 from tqdm import tqdm
 from utils import crop_all_views
 
+MODELS_LOCATIONS = {
+    "side": r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500",
+    "bottom": r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161",
+}
+
+MODELS_MAP_TO_VIEW = {
+    "side": [],
+    "bottom": ["central"]
+}
+
 
 def process_videos_in_folder(folder, json_file, timestamp):
     avi_files = list(Path(folder).rglob("*.avi"))
@@ -44,7 +54,18 @@ def process_videos_in_folder(folder, json_file, timestamp):
 
     for avi_file in tqdm(avi_files):
         output_dir = avi_file.parent / f"{avi_file.stem}_cropped_{timestamp}"
-        crop_all_views(avi_file, output_dir, json_file, verbose=False)
+        cropped_filenames = crop_all_views(avi_file, output_dir, json_file, verbose=False)
+
+        # TODO process cropped videos usin run_inference:
+        for model_name, views in MODELS_MAP_TO_VIEW.items():
+            videos_to_process = [video_path for video_path in cropped_filenames if any([view in video_path.name for view in views])]
+            for video_path in videos_to_process:
+                run_inference(video_path, MODELS_LOCATIONS[model_name])
+        
+
+        
+        
+
 
 
 if __name__ == "__main__":
