@@ -1,5 +1,5 @@
 # %%
-%matplotlib widget
+# %matplotlib widget
 from pathlib import Path
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -13,7 +13,7 @@ from threed_utils.io import movement_ds_from_anipose_triangulation_df, read_cali
 from threed_utils.anipose.triangulate import CameraGroup, triangulate_core
 
 
-data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
+data_dir = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/calibration")
 # data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240726\Calibration\multicam_video_2024-07-26T11_40_54_cropped_20240726164916")
 # Read checkerboard detections as movement dataset
 
@@ -33,10 +33,13 @@ views_dss = []
 for n_view, view in enumerate(cam_names):
     # position_array = np.moveaxis(all_calib_uvs[n_view], 0, -1)  # Move views to last axis
     position_array = all_calib_uvs[n_view]
-    position_array = position_array[:, np.newaxis, :, :]  # Add individuals axis
-    confidence_array = np.ones(position_array.shape[:-1])
+    position_array = position_array[:, np.newaxis, :, :]
+     # to match position array exp
+    print(f"Final position_array shape: {position_array.shape}")  # Add individuals axis
+    confidence_array = np.ones(position_array.shape[:-1]).transpose(0, 2, 1)
 
     keypoint_names = [str(i) for i in range(position_array.shape[2])]
+    position_array = position_array.transpose(0, 3, 2, 1)
     individual_names = ["checkerboard"]
     source_software = "opencv"
 
@@ -87,6 +90,11 @@ def mcc_triangulate_ds(
     threed_coords = threed_coords.transpose(1, 0, 2)[:, np.newaxis, :, :]
     # TODO propagate confidence smartly
     confidence_array = np.ones(threed_coords.shape[:-1])
+    #change again shape to match anipose:
+    print(threed_coords.shape, confidence_array.shape)
+    threed_coords = threed_coords.transpose(0, 3, 2, 1)
+    confidence_array = confidence_array.transpose(0, 2, 1)
+    
 
     return from_numpy(position_array=threed_coords,
                confidence_array=confidence_array,
@@ -126,6 +134,7 @@ def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
                  views_ds.coords["keypoints"].values, 
                  cgroup, 
                  )
+    print(triang_df.info)
     return movement_ds_from_anipose_triangulation_df(triang_df)
 
 
@@ -149,10 +158,11 @@ triang_config_optim = {
     "constraints": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
     "constraints_weak": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
 }
-# de_nanned = views_ds.copy()
-# de_nanned.position.values[np.isnan(de_nanned.position.values)] = 0
+de_nanned = views_ds.copy()
+de_nanned.position.values[np.isnan(de_nanned.position.values)] = 0
 
 # subtract random val between 0 and 1 to confidences:
+
 de_nanned.confidence.values -= np.random.rand(*de_nanned.confidence.values.shape)
 anipose_triangulated_ds_optim = anipose_triangulate_ds(views_ds, 
                                                        calib_toml_path, 
@@ -206,11 +216,22 @@ from movement.io.load_poses import from_file
 # print(data_dir)
 # slp_files_dir = data_dir.parent / "test_slp_files"
 
-slp_files_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\sample_video_for_triangulation\multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
+# slp_files_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\sample_video_for_triangulation\multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
+slp_files_dir = Path('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/video_test')
 slp_files = list(slp_files_dir.glob("*.slp"))
-print(slp_files)
 
-cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)+$"
+
+for f in slp_files:
+    print(f.name)
+#%%
+
+cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$"
+
+
+
+
+
+# cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([\w-]+)\.\w+(?:\.\w+)+$"
 
 
 
