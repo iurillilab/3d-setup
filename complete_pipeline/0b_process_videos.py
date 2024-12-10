@@ -39,7 +39,7 @@ def run_inference(video, model):
         print(f"Error running comman {output_folder}, error: {e}, for video: {video}")
 
 
-def process_videos_in_folder(folder, json_file, timestamp):
+def process_videos_in_folder(folder, json_file, timestamp, skip_existing=True):
     avi_files = list(Path(folder).rglob("*.avi"))
     # filter out files from previous runs, if in the name there's
     # central, mirror-top, mirror-bottom, mirror-left, mirror-right:
@@ -76,6 +76,10 @@ def process_videos_in_folder(folder, json_file, timestamp):
     ]
 
     for avi_file in tqdm(avi_files):
+        existing_cropped_dirs = list(avi_file.parent.glob(f"*_cropped_*"))
+        if len(existing_cropped_dirs) > 0 and skip_existing:
+            print(f"Skipping {avi_file} as it has already been processed")
+            continue
         output_dir = avi_file.parent / f"{avi_file.stem}_cropped_{timestamp}"
         cropped_filenames = crop_all_views(avi_file, output_dir, json_file, verbose=False)
         print(cropped_filenames, '\n', type(cropped_filenames))
@@ -104,6 +108,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "json_file", type=str, help="JSON file with cropping parameters"
+    )
+    parser.add_argument(
+        "skip_existing",
+        action="store_true",
+        help="Skip processing files that have already been processed",
+        default=False,
     )
 
     args = parser.parse_args()
