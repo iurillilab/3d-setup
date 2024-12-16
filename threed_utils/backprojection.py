@@ -153,7 +153,7 @@ def get_frames_camera(cam_names, n_frame, video_dir):
 
 
 
-def plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2d, arena_points):
+def plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2d, arena_points, frame_n):
     """
     Plots frames with tracked points in subplots, using camera names as titles.
 
@@ -176,9 +176,10 @@ def plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2
     for idx in range(len(cam_names)):
         ax = axes[idx]
         ax.imshow(video_camera_map[cam_names[idx]])  # Display the frame
-        points = np.array(back_projected[idx])  # Ensure points are in array form
+        points = np.array(back_projected[idx]) 
+        print(points.shape) # Ensure points are in array form
         if len(points) > 0:
-            ax.scatter(points[:, 0], points[:, 1], color='red', s=10)
+            ax.scatter(points[frame_n, : , 0], points[frame_n, :, 1], color='red', s=10)
             ax.scatter(arena_points_p[idx][:, 0], arena_points_p[idx][:, 1], color='blue', s=10)
             # ax.scatter(arena_2d[idx, :, 1], arena_2d[idx, :, 0], color='blue', s=10)  # Plot points
         ax.set_title(cam_names[idx])
@@ -211,21 +212,14 @@ def backprojections_plots(ds, n_frame, video_dir, calibration_dir, arena_path):
 
     all_calib_uvs = np.load(last_calibration_path / "all_calib_uvs.npy")
     calib_toml_path = last_calibration_path / "calibration_from_mc.toml"
-    print(calib_toml_path)
     cam_names, img_sizes, extrinsics, intrinsics = read_calibration_toml(calib_toml_path)
-    # with open(arena_path, 'rb') as f:
-    #     points = pickle.load(f)
-    # arena_points = points['points']['arena_coordinates'].squeeze()
-    # new_order = [4, 2, 1, 3, 0]
-    # arena_points_n = arena_points[new_order, ...]
-
     with open(arena_path, 'r') as f:
         cropping_dict = json.load(f)
         old_arena = cropping_dict[-1]['points_coordinate']
     arr_arena = []
     for key, value in old_arena.items():
         arr_arena.append(value)
-
+# load arena coordinates inot a movement dataset: with conf, etc. 
     arr_arena = np.array(arr_arena)
     arena_points_new = np.zeros_like(arr_arena)
 
@@ -239,13 +233,13 @@ def backprojections_plots(ds, n_frame, video_dir, calibration_dir, arena_path):
     arena_2d, back_projected = backproject_triangulated_points(ds, extrinsics, intrinsics, n_frame, cam_names, arena_3d)
     frame_points3d = ds.isel(time=n_frame).position.values.squeeze().transpose(1, 0)
     plot3d_frame(frame_points3d, arena_3d)
-    print(back_projected.shape)
+
 
 
     video_camera_map = get_frames_camera(cam_names, n_frame, video_dir)
 
 
-    plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2d, arena_points_new)
+    plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2d, arena_points_new, n_frame)
 
 # add as argparser: slp_dir, data_dir, frame_n, ds_path,  optional arena_path, 
 
@@ -317,6 +311,7 @@ if __name__ == "__main__":
 
 
 '''
+Example of command:
 python backprojection.py \
     --data_dir /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/calibration \
     --slp_dir /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/video_test \
