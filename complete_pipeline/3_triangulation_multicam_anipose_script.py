@@ -57,7 +57,12 @@ views_ds = xr.concat(views_dss, dim=new_coord_views)
 time_slice = slice(145, 1000)
 views_ds = views_ds.sel(time=time_slice, drop=True)
 
+views_ds.attrs['fps'] = 'fps'
 
+views_ds.attrs['source_file'] = 'mcc'
+
+
+views_ds.to_netcdf(data_dir / "checkboard_triangulaiton.h5")
 
 # %%
 def mcc_triangulate_ds(
@@ -122,11 +127,14 @@ def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
 
     calib_fname = str(calib_toml_path)
     cgroup = CameraGroup.load(calib_fname)
+    # read toml file and use the views to order the dimenensions of the views_ds, so thne you are sure that when you will do the back projeciton thsoe are the same order of the matrices.
 
     individual_name = views_ds.coords["individuals"][0]
     reshaped_ds = views_ds.sel(individuals=individual_name, time=time_slice).transpose("view", "time", "keypoints", "space")
+    # sort over view axis using the view ordring
     positions = reshaped_ds.position.values
     scores = reshaped_ds.confidence.values
+    # TODO: add sorting dimension  form the toml file to 
 
     triang_df = triangulate_core(config, 
                  positions, 
@@ -214,7 +222,7 @@ for index in [0]:
 import re
 from movement.io.load_poses import from_file
 # print(data_dir)
-# slp_files_dir = data_dir.parent / "test_slp_files"
+# slp_files_dir = data_dir.parent / "test_slp_files
 
 # slp_files_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\sample_video_for_triangulation\multicam_video_2024-07-24T10_04_55_cropped_20241104101620")
 slp_files_dir = Path('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/video_test')
@@ -248,6 +256,7 @@ dataset_list = [
 # make coordinates labels of the keypoints axis all lowercase
 for ds in dataset_list:
     ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
+
 
 time_slice = slice(0, 1000)
 ds = xr.concat(dataset_list, dim=new_coord_views).sel(time=time_slice)
