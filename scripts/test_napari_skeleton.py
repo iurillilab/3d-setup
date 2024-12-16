@@ -6,7 +6,8 @@ from skimage.data import binary_blobs
 from skimage.morphology import skeletonize
 import scipy.ndimage as ndi
 
-# Use synthetic data
+#%%
+# Ue synthetic data
 blobs = binary_blobs(64, volume_fraction=0.3, n_dim=3)
 binary_skeleton = skeletonize(blobs)
 skeleton = skan.Skeleton(binary_skeleton)
