@@ -11,7 +11,7 @@ from movement.io.load_poses import from_numpy
 from threed_utils.io import movement_ds_from_anipose_triangulation_df, read_calibration_toml
 
 from threed_utils.anipose.triangulate import CameraGroup, triangulate_core
-
+#%%
 
 data_dir = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/calibration")
 # data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240726\Calibration\multicam_video_2024-07-26T11_40_54_cropped_20240726164916")
@@ -25,7 +25,7 @@ all_calib_uvs = np.load(last_calibration_path / "all_calib_uvs.npy")
 calib_toml_path = last_calibration_path / "calibration_from_mc.toml"
 print(calib_toml_path)
 cam_names, img_sizes, extrinsics, intrinsics = read_calibration_toml(calib_toml_path)
-
+#%%
 print(all_calib_uvs.shape)
 
 # Temporary patch for loading checkerboard data as dataset:
@@ -54,7 +54,7 @@ new_coord_views = xr.DataArray(cam_names, dims="view")
 
 views_ds = xr.concat(views_dss, dim=new_coord_views)
 
-time_slice = slice(145, 1000)
+time_slice = slice(0, 1000)
 views_ds = views_ds.sel(time=time_slice, drop=True)
 
 views_ds.attrs['fps'] = 'fps'
@@ -144,7 +144,7 @@ def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
                  )
     print(triang_df.info)
     return movement_ds_from_anipose_triangulation_df(triang_df)
-
+#%%
 
 triang_config = {
     "ransac": True,
@@ -263,6 +263,8 @@ ds = xr.concat(dataset_list, dim=new_coord_views).sel(time=time_slice)
 
 bodyparts = list(ds.coords["keypoints"].values)
 
+print(bodyparts)
+
 print(ds.position.shape, ds.confidence.shape, bodyparts)
 
 triang_config_optim = {
@@ -270,13 +272,13 @@ triang_config_optim = {
     "optim": True,
     "optim_chunking": True,
     "optim_chunking_size": 100,
-    "score_threshold": 0.0,
-    "scale_smooth": 4,
-    "scale_length": 2,
+    "score_threshold": 0.7,
+    "scale_smooth": 1,
+    "scale_length": 3,
     "scale_length_weak": 0.5,
     "n_deriv_smooth": 2,
     "reproj_error_threshold": 150,
-    "constraints": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+    "constraints": [['lear','rear'], ['nose','rear'], ['nose','lear'], ['tailbase', 'upperback']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
     "constraints_weak": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
 }
 
@@ -288,10 +290,18 @@ anipose_triangulated_ds_optim = anipose_triangulate_ds(ds,
 
 
 
-# %%
-mcc_triangulated_ds.info
+#%%
 
-anipose_triangulated_ds_optim.info
+anipose_triangulated_ds_optim.position.sel(keypoints='lear').values.shape
+
+
+# %%
+
+#%%
+# get average distance between lear and rear between the two methods per frames
+
+
+
 # %%
 # save the results to share with me
 anipose_triangulated_ds_optim.attrs['fps'] = 'fps'
@@ -301,7 +311,7 @@ anipose_triangulated_ds_optim.attrs['source_file'] = 'anipose'
 mcc_triangulated_ds.attrs['source_file'] = 'mcc'
 
 mcc_triangulated_ds.to_netcdf(slp_files_dir / "mcc_triangulated_ds.h5")
-anipose_triangulated_ds_optim.to_netcdf(slp_files_dir / "anipose_triangulated_ds.h5")
+anipose_triangulated_ds_optim.to_netcdf(slp_files_dir / "anipose_triangulated_ds_optim.h5")
 
 
 #%%
@@ -311,4 +321,21 @@ anipose_triangulated_ds_optim.to_netcdf(slp_files_dir / "anipose_triangulated_ds
 all_cols = triang_df.columns.copy()
 
 [col for col in all_cols if not any([col.startswith(f"{i}_") for i in range(35)])]
+# %%
+from threed_utils.movement_napari.convert import ds_to_napari_tracks
+import xarray as xr
+from pathlib import Path
+
+# Path to the saved file
+slp_files_dir = Path('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/video_test')
+dataset_path = slp_files_dir / "anipose_triangulated_ds_optim.h5"
+
+# Load the dataset
+ds = xr.open_dataset(dataset_path)
+
+# Optional: Print basic information about the dataset
+print(ds.info)
+#%%
+
+ds_to_napari_tracks(ds)
 # %%

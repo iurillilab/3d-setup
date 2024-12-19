@@ -241,8 +241,6 @@ def backprojections_plots(ds, n_frame, video_dir, calibration_dir, arena_path):
 
     plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2d, arena_points_new, n_frame)
 
-# add as argparser: slp_dir, data_dir, frame_n, ds_path,  optional arena_path, 
-
 
 
 def parse_args():
