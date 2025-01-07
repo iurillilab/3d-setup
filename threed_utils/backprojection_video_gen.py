@@ -14,7 +14,6 @@ import plotly.graph_objects as go
 import json
 import argparse
 
-
 def triangulate_all_keypoints(
     calib_uvs, extrinsics, intrinsics, progress_bar=True
 ):
@@ -48,6 +47,7 @@ def backproject_triangulated_points(xarray_ds, extrinsics, intrinsics, frame_n, 
     dist_coef = [i[1] for i in intrinsics]
     # Extract 3D points for the specified frame
     # Shape will be (space, keypoints, individuals)
+    xarray_ds = xarray_ds.sel(keypoints=['lblimb', 'lflimb', 'rblimb', 'rflimb'])
     frame_points = xarray_ds.position.values[frame_n, ...].squeeze().transpose(1, 0)
     # do semantic ordering of columns
 
@@ -153,13 +153,13 @@ def get_frames_camera(cam_names, n_frame, video_dir):
 
 
 
-def plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2d, arena_points, frame_n):
+def plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2d, arena_points, frame_n, output_dir):
     """
-    Plots frames with tracked points in subplots, using camera names as titles.
+    Plots frames with tracked points in subplots and saves the figure.
 
     Args:
-        camera_data (dict): A dictionary where keys are camera names and values are tuples:
-                            (frame (numpy array), tracked points (list or numpy array)).
+        camera_data (dict): A dictionary where keys are camera names and values are tuples
+        output_dir (Path): Directory to save the output figure
     """
     # Determine the number of subplots needed
     n_cameras = len(cam_names)
@@ -190,21 +190,26 @@ def plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2
         axes[i].axis('off')
 
     plt.tight_layout()
-    plt.show()
+    # Instead of showing, save the figure
+    output_path = Path(output_dir) / f"frame_{frame_n:04d}.png"
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()  # Close the figure to free memory
 
-def plot3d_frame(frame_points3d, arena_3d):
-    frame_points3d = frame_points3d.squeeze()
-    arena_3d = arena_3d.squeeze()
-    fig = go.Figure()
-    fig.add_trace(go.Scatter3d(x=frame_points3d[:, 0], y=frame_points3d[:, 1], z=frame_points3d[:, 2], mode='markers', marker=dict(size=5, color='red')))
-    #add arena points 
-    fig.add_trace(go.Scatter3d(x=arena_3d[:, 0], y=arena_3d[:, 1], z=arena_3d[:, 2], mode='markers', marker=dict(size=5, color='blue')))
-    fig.show()
+
 # function that combines the previous functions into a single one by calling them:
 
-def backprojections_plots(ds, n_frame, video_dir, calibration_dir, arena_path):
-
-
+def backprojections_plots(ds, end_frame, video_dir, calibration_dir, arena_path, output_dir):
+    """
+    Generate and save plots for frames from 0 to end_frame.
+    
+    Args:
+        ds: Dataset containing tracking data
+        end_frame (int): Last frame number to process
+        video_dir (Path): Directory containing video files
+        calibration_dir (Path): Directory containing calibration data
+        arena_path (Path): Path to arena configuration file
+        output_dir (Path): Directory to save output plots
+    """
     # load the calibration matrices:
     calibration_path = Path(calibration_dir)
     calibration_paths = sorted(data_dir.glob("mc_calibration_output_*"))
@@ -230,16 +235,18 @@ def backprojections_plots(ds, n_frame, video_dir, calibration_dir, arena_path):
 
     arena_3d = triangulate_all_keypoints(arena_points_new[..., [1, 0]], extrinsics, intrinsics)
 
-    arena_2d, back_projected = backproject_triangulated_points(ds, extrinsics, intrinsics, n_frame, cam_names, arena_3d)
-    frame_points3d = ds.isel(time=n_frame).position.values.squeeze().transpose(1, 0)
-    plot3d_frame(frame_points3d, arena_3d)
+    # Process each frame
+    for frame_n in tqdm(range(end_frame + 1), desc="Processing frames"):
+        arena_2d, back_projected = backproject_triangulated_points(
+            ds, extrinsics, intrinsics, frame_n, cam_names, arena_3d
+        )
 
+        video_camera_map = get_frames_camera(cam_names, frame_n, video_dir)
 
-
-    video_camera_map = get_frames_camera(cam_names, n_frame, video_dir)
-
-
-    plot_frames_with_points(cam_names, back_projected, video_camera_map, arena_2d, arena_points_new, n_frame)
+        plot_frames_with_points(
+            cam_names, back_projected, video_camera_map, 
+            arena_2d, arena_points_new, frame_n, output_dir
+        )
 
 
 
@@ -264,7 +271,7 @@ def parse_args():
         '--frame_n',
         type=int,
         required=True,
-        help='Frame number to process'
+        help='Last frame number to process (will process frames 0 to frame_n)'
     )
     
     parser.add_argument(
@@ -279,6 +286,13 @@ def parse_args():
         type=str,
         required=True,
         help='Path to the xarray dataset containing tracking data'
+    )
+    
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        required=True,
+        help='Directory to save output plots'
     )
 
     return parser.parse_args()
@@ -298,22 +312,32 @@ if __name__ == "__main__":
     # Load the dataset
     ds = xr.open_dataset(args.ds_path)
     
+    # Create output directory if it doesn't exist
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
     # Call your main function with the arguments
     backprojections_plots(
         ds=ds,
-        n_frame=args.frame_n,
+        end_frame=args.frame_n,
         video_dir=slp_dir,
         calibration_dir=data_dir,
-        arena_path=args.cropping_path
+        arena_path=args.cropping_path,
+        output_dir=output_dir
     )
 
 
 '''
 Example of command:
-python backprojection.py \
+python backprojection_video_gen.py \
     --data_dir /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/calibration \
     --slp_dir /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/video_test \
     --frame_n 100 \
     --cropping_path /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/uncropped_cal/multicam_video_2024-07-22T10_19_22_20241209-164946.json \
-    --ds_path /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/video_test/mcc_triangulated_ds.h5
+    --ds_path /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/video_test/anipose_triangulated_ds_optimised_extra.h5 \
+    --output_dir /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/output/plots
 '''
+
+
+
+ 
