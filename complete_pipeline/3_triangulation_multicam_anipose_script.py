@@ -113,9 +113,11 @@ mcc_triangulated_ds = mcc_triangulate_ds(views_ds, calib_toml_path)
 
 #%%
 
-mcc_triangulated_ds.info
-
-
+mcc_triangulated_ds.position.values.shape
+#%%
+mcc_triangulated_ds.attrs['fps'] = 'fps'
+mcc_triangulated_ds.attrs['source_file'] = 'mcc'
+mcc_triangulated_ds.to_netcdf(data_dir / "mcc_triangulated_ds_presentation.h5")
 # %%
 # ===============================================
 # Test anipose triangulation
@@ -266,7 +268,13 @@ bodyparts = list(ds.coords["keypoints"].values)
 print(bodyparts)
 
 print(ds.position.shape, ds.confidence.shape, bodyparts)
+#%%
 
+ds.attrs['fps'] = 'fps'
+ds.attrs['source_file'] = 'sleap'
+ds.to_netcdf(slp_files_dir / "sleap_ds_improved.h5")
+
+#%%
 triang_config_optim = {
     "ransac": True,
     "optim": True,
@@ -279,10 +287,10 @@ triang_config_optim = {
     "n_deriv_smooth": 2,
     "reproj_error_threshold": 150,
     "constraints": [['lear','rear'], ['nose','rear'], ['nose','lear'], ['tailbase', 'upperback']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
-    "constraints_weak": [], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+    "constraints_weak": [] #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
 }
 
-mcc_triangulated_ds = mcc_triangulate_ds(ds, calib_toml_path)
+#mcc_triangulated_ds = mcc_triangulate_ds(ds, calib_toml_path)
 
 anipose_triangulated_ds_optim = anipose_triangulate_ds(ds, 
                                                        calib_toml_path, 
@@ -291,27 +299,31 @@ anipose_triangulated_ds_optim = anipose_triangulate_ds(ds,
 
 
 #%%
+anipose_triangulated_ds_optim.info
+#%%
 
 anipose_triangulated_ds_optim.position.sel(keypoints='lear').values.shape
 
 
 # %%
 
+ds.position.values.shape
+
+#%%
+ds.attrs['fps'] = 'fps'
+ds.to_netcdf(slp_files_dir / ".h5")
 #%%
 # get average distance between lear and rear between the two methods per frames
-
-
-
 # %%
 # save the results to share with me
 anipose_triangulated_ds_optim.attrs['fps'] = 'fps'
-mcc_triangulated_ds.attrs['fps'] = 'fps'
+# mcc_triangulated_ds.attrs['fps'] = 'fps'
 
 anipose_triangulated_ds_optim.attrs['source_file'] = 'anipose'
-mcc_triangulated_ds.attrs['source_file'] = 'mcc'
+# mcc_triangulated_ds.attrs['source_file'] = 'mcc'
 
-mcc_triangulated_ds.to_netcdf(slp_files_dir / "mcc_triangulated_ds.h5")
-anipose_triangulated_ds_optim.to_netcdf(slp_files_dir / "anipose_triangulated_ds_optim.h5")
+# mcc_triangulated_ds.to_netcdf(slp_files_dir / "mcc_triangulated_ds.h5")
+anipose_triangulated_ds_optim.to_netcdf(slp_files_dir / "anipose_triangulated_ds_optim02.h5")
 
 
 #%%
