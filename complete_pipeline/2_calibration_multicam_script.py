@@ -22,7 +22,8 @@ if __name__ == '__main__':
     square_size = 12.5
     # data_dir = Path("/Users/vigji/Desktop/test-anipose/cropped_calibration_vid")
     # data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240724\calibration\multicam_video_2024-07-24T14_13_45_cropped_20241209165236")
-    data_dir = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/calibration")
+    # data_dir = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/calibration")
+    data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240724\calibration\multicam_video_2024-07-24T14_13_45_cropped_20241209165236")
     output_dir = data_dir / f"mc_calibration_output_{timestamp}"
     output_dir.mkdir(exist_ok=True)
 
@@ -192,3 +193,5 @@ if __name__ == '__main__':
     plt.axis("equal")
     plt.show()
     fig.savefig(output_dir / "triangulated_frame.png")
+
+# %%

@@ -113,7 +113,7 @@ if __name__ == "__main__":
         "skip_existing",
         action="store_true",
         help="Skip processing files that have already been processed",
-        default=False,
+        default=True,
     )
 
     args = parser.parse_args()
