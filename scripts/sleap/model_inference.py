@@ -7,25 +7,18 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 
-
-
-from sleap import Labels
 #%%
 
 
-labels = Labels.load_file(r"D:\SLEAP_models\SLEAP_side_models\labels.v001.slp")
-
-video_paths = [video.filename for video in labels.videos]
-
-print(video_paths)
+#%%
 
 
 #%%
 # SLEAP models:
 
 
-side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
-bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161"
+# side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
+# bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161"
 
 # quick sanity check to control that the model has run inference on all the videos
 
@@ -34,35 +27,35 @@ bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_
 
 
 # function to iterate through all the mice videos and select the paths of all videos except the bottom one.
-import datetime 
+# import datetime 
 
-def get_last_modified_file(directory, extension):
-    files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.slp')]
-    print(files)
-    if not files:
-        return None
-    else:
-        last_modified = max(files, key=os.path.getmtime)
-        return last_modified
+# def get_last_modified_file(directory, extension):
+#     files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.slp')]
+#     print(files)
+#     if not files:
+#         return None
+#     else:
+#         last_modified = max(files, key=os.path.getmtime)
+#         return last_modified
 
 
 
-#for each video path, check in the directory has a file created yesterday
-last_per_video =[]
-for video_path in video_paths:
-    directory = os.path.dirname(video_path)
-    if os.path.isdir(directory):
-        last_modified = get_last_modified_file(directory, '.slp')
-        last_per_video.append(last_modified)
+# #for each video path, check in the directory has a file created yesterday
+# last_per_video =[]
+# for video_path in video_paths:
+#     directory = os.path.dirname(video_path)
+#     if os.path.isdir(directory):
+#         last_modified = get_last_modified_file(directory, '.slp')
+#         last_per_video.append(last_modified)
 
-print(len(video_paths), len(last_per_video))
+# print(len(video_paths), len(last_per_video))
 
-for last in last_per_video:
-    if last is not None:
-        m_time = os.path.getmtime(last)
-        # convert timestamp into DateTime object
-        dt_m = datetime.datetime.fromtimestamp(m_time)
-        print('Modified on:', dt_m)
+# for last in last_per_video:
+#     if last is not None:
+#         m_time = os.path.getmtime(last)
+#         # convert timestamp into DateTime object
+#         dt_m = datetime.datetime.fromtimestamp(m_time)
+#         print('Modified on:', dt_m)
 
 
  
@@ -88,10 +81,9 @@ def get_video_paths(main_path):
             and "central" not in video.name
         ):
             side_paths.append(str(video))
-        else:
+        if "central" in video.name:
             bottom_paths.append(str(video))
     return side_paths, bottom_paths
-
 
 # function that takes video paths and encode them and convert them into mp4 format to run inference using ffmpeg
 # def encode_and_convert(video_paths):
@@ -122,7 +114,7 @@ def run_inference(enc_vid, model):
     It runs the model inference on the encoded videos and saves the results in a specific folder.
     """
     for video in enc_vid:
-        output_folder = video.replace(".avi.avi", "predictions.slp")
+        output_folder = video.replace(".avi.mp4", "predictions.slp")
         print(f"Running inference on video: {video}")
         try:
             subprocess.run(
@@ -135,27 +127,24 @@ def run_inference(enc_vid, model):
 
 if __name__ == "__main__":
     GEN_VIDEO_PATH = (
-        r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\test_cropping\m_test"
+        r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting"
     )
 
 
     
-    labels = Labels.load_file(r"D:\SLEAP_models\SLEAP_side_models\labels.v001.slp")
-    side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241203_120201.single_instance.n=552"
+    #labels = Labels.load_file(r"D:\SLEAP_models\SLEAP_side_models\labels.v001.slp")
+    #side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241203_120201.single_instance.n=552"
 
-    video_paths = [video.filename for video in labels.videos]
+    #video_paths = [video.filename for video in labels.videos]
     # side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
-    # bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161"
+    bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\250116_131653.single_instance.n=416"
 
-    # side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
+    side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
     # encoded_paths = encode_and_convert(video_paths)
 
 
-    run_inference(video_paths, side_model)
-    # run_inference(bottom_paths, bottom_model)
+    #run_inference(video_paths, side_model)
+    run_inference(bottom_paths, bottom_model)
     print("Inference done!")
 
 
-
-
-# %%

@@ -25,6 +25,8 @@ def movement_ds_from_anipose_triangulation_df(triang_df, individual_name="checke
         confidence_array[:, 0, i] = triang_df[f'{kp}_score']
 
     individual_names = [individual_name]
+    position_array = position_array.transpose(0, 3, 2, 1)
+    confidence_array = confidence_array.transpose(0, 2, 1)
 
     return from_numpy(position_array=position_array,
                      confidence_array=confidence_array, 

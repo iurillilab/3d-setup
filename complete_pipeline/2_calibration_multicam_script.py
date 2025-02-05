@@ -28,10 +28,10 @@ if __name__ == '__main__':
     output_dir.mkdir(exist_ok=True)
 
     video_paths = [
-        f for f in data_dir.iterdir() if f.suffix == ".mp4" and "overlay" not in f.stem
+        f for f in data_dir.iterdir() if f.suffix == ".avi.mp4" and "overlay" not in f.stem
     ]
 
-    camera_names = [p.stem.split("_")[-1].split(".avi")[0] for p in video_paths]
+    camera_names = [p.stem.split("_")[-1].split(".avi.mp4")[0] for p in video_paths]
     print(camera_names)
 
     print("Detecting points, if not already detected...")
