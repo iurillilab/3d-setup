@@ -146,7 +146,8 @@ def create_2d_ds(slp_files_dir: Path):
         ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
 
 
-    ds = xr.concat(dataset_list, dim=new_coord_views)
+    time_slice = slice(0, 1000)
+    ds = xr.concat(dataset_list, dim=new_coord_views).sel(time=time_slice)
 
     bodyparts = list(ds.coords["keypoints"].values)
 

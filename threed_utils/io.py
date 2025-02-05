@@ -16,9 +16,12 @@ def movement_ds_from_anipose_triangulation_df(triang_df, individual_name="checke
     n_frames = len(triang_df)
     n_keypoints = len(keypoint_names)
 
+
     # Initialize arrays and fill
     position_array = np.zeros((n_frames, 1, n_keypoints, 3))  # 1 for single individual
+    print(position_array.shape)
     confidence_array = np.zeros((n_frames, 1, n_keypoints))
+    print(confidence_array.shape)
     for i, kp in enumerate(keypoint_names):
         for j, coord in enumerate(['x', 'y', 'z']):
             position_array[:, 0, i, j] = triang_df[f'{kp}_{coord}']
@@ -27,6 +30,9 @@ def movement_ds_from_anipose_triangulation_df(triang_df, individual_name="checke
     individual_names = [individual_name]
     position_array = position_array.transpose(0, 3, 2, 1)
     confidence_array = confidence_array.transpose(0, 2, 1)
+    print("array before numpy")
+    print(position_array.shape)
+    print(confidence_array.shape)
 
     return from_numpy(position_array=position_array,
                      confidence_array=confidence_array, 
