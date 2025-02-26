@@ -93,9 +93,10 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set) -> list[P
 
     # Recursively iterate through all directories
     for directory in root_dir.rglob('*'):
+        
         if not directory.is_dir():
             continue
-        if directory.name == "calibration":
+        if "Calibration" in [parent.name for parent in directory.parents]:
             continue
         # Get all SLP files in the current directory
         slp_files = list(directory.glob('*.slp'))
@@ -146,8 +147,8 @@ def create_2d_ds(slp_files_dir: Path):
         ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
 
 
-    time_slice = slice(0, 1000)
-    ds = xr.concat(dataset_list, dim=new_coord_views).sel(time=time_slice)
+    # time_slice = slice(0, 1000)
+    ds = xr.concat(dataset_list, dim=new_coord_views)
 
     bodyparts = list(ds.coords["keypoints"].values)
 
@@ -342,6 +343,7 @@ if __name__ == "__main__":
 
 
     for valid_dir in tqdm(valid_dirs, desc="Triangulating directories"):
+        print(valid_dir)
         ds = create_2d_ds(valid_dir)
         _3d_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
         _3d_ds.attrs['fps'] = 'fps'
