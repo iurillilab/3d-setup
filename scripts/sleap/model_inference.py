@@ -127,7 +127,7 @@ def run_inference(enc_vid, model):
 
 if __name__ == "__main__":
     GEN_VIDEO_PATH = (
-        r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting"
+        r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\test_cropping\try_model\multicam_video_2024-08-05T15_45_21_cropped_20241210155931"
     )
 
 
@@ -137,14 +137,14 @@ if __name__ == "__main__":
 
     #video_paths = [video.filename for video in labels.videos]
     # side_model = r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500"
+    side_model = r"D:\SLEAP_models\SLEAP_side_models\models\250314_091459.single_instance.n=659"
     bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\250116_131653.single_instance.n=416"
 
     side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
-    # encoded_paths = encode_and_convert(video_paths)
+    print(side_paths)
 
-
-    #run_inference(video_paths, side_model)
-    run_inference(bottom_paths, bottom_model)
+    # run_inference(bottom_paths, bottom_model)
+    run_inference(side_paths, side_model)
     print("Inference done!")
 
 

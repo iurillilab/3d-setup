@@ -250,10 +250,11 @@ if __name__ == "__main__":
                       help='Animation speed in milliseconds per frame (default: 150)')
     
     args = parser.parse_args()
-    
+    time_slice = (0, 500)
     # Load the datasets
     try:
         pose_datasets = [xr.open_dataset(file) for file in args.pose_files]
+        pose_datasets = [ds.sel(time=slice(*time_slice)) for ds in pose_datasets]
         arena_ds = xr.open_dataset(args.arena_file)
         
         # Create default labels if not provided
