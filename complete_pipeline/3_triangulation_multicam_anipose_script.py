@@ -231,8 +231,6 @@ slp_files_dir = Path('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/
 slp_files = list(slp_files_dir.glob("*.slp"))
 
 
-for f in slp_files:
-    print(f.name)
 #%%
 
 cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$"

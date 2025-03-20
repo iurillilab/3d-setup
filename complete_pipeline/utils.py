@@ -170,21 +170,43 @@ def annotate_cropping_windows(frame):
         A dictionary containing the final crop parameters for each view.
     """
 
+
     napari_viewer = napari.Viewer()
     napari_viewer.add_image(frame, name="Average frame", contrast_limits=[0, 255])
 
+    # Central rectangle corner points
+    img_height, img_width = frame.shape[:2]  # Get image dimensions
+
+    # Central rectangle corner points
     corner_sw = (860, 250)
     corner_nw = (240, 250)
     corner_ne = (240, 850)
     corner_se = (860, 850)
-    def_side = 220
 
-    # //TODO make the padding automatic
+    def_side = 220  # Default side length for mirror regions
 
-    # padding is used to make videos divisible by 16
+    # Padding for video divisibility by 16
     padding_left_right = 2
     width_padding_tb = 4
 
+    # **Step 1: Compute projection points on the image borders**
+    # These are the central points for each side projected to the image boundary
+
+    # Projected points on the top and bottom borders
+    top_mid_left = (0, corner_nw[1])    # (y = 0, x of NW corner)
+    top_mid_right = (0, corner_ne[1])   # (y = 0, x of NE corner)
+
+    bottom_mid_left = (img_height - 1, corner_sw[1])  # (y = max, x of SW corner)
+    bottom_mid_right = (img_height - 1, corner_se[1])  # (y = max, x of SE corner)
+
+    # Projected points on the left and right borders
+    left_mid_top = (corner_nw[0], 0)   # (y of NW corner, x = 0)
+    left_mid_bottom = (corner_sw[0], 0)  # (y of SW corner, x = 0)
+
+    right_mid_top = (corner_ne[0], img_width - 1)  # (y of NE corner, x = max)
+    right_mid_bottom = (corner_se[0], img_width - 1)  # (y of SE corner, x = max)
+
+    # **Step 2: Construct the rectangles so they extend toward the center**
     default_rectangles = {
         "central": [
             (corner_nw[0] - padding_left_right, corner_nw[1] - width_padding_tb),
@@ -192,55 +214,32 @@ def annotate_cropping_windows(frame):
             (corner_se[0] + padding_left_right, corner_se[1] + width_padding_tb),
             (corner_sw[0] + padding_left_right, corner_sw[1] - width_padding_tb),
         ],
-        "mirror-top": [
-            (
-                corner_nw[0] - def_side - padding_left_right,
-                corner_nw[1] - width_padding_tb,
-            ),
-            (
-                corner_ne[0] - def_side + padding_left_right,
-                corner_ne[1] - width_padding_tb,
-            ),
-            (corner_ne[0] + padding_left_right, corner_ne[1] + width_padding_tb),
-            (corner_nw[0] - padding_left_right, corner_nw[1] + width_padding_tb),
+        "mirror-top": [  # Corrected: Extends downward, keeping edges aligned
+            (top_mid_left[0], top_mid_left[1]),  # Left projected point (top border)
+            (top_mid_right[0], top_mid_right[1]),  # Right projected point (top border)
+            (top_mid_right[0] + def_side, top_mid_right[1]),  # Extending downward
+            (top_mid_left[0] + def_side, top_mid_left[1]),  # Extending downward
         ],
-        "mirror-bottom": [
-            (corner_sw[0] - padding_left_right, corner_sw[1] - width_padding_tb),
-            (corner_se[0] - padding_left_right, corner_se[1] + width_padding_tb),
-            (
-                corner_se[0] + def_side + padding_left_right,
-                corner_se[1] + width_padding_tb,
-            ),
-            (
-                corner_sw[0] + def_side + padding_left_right,
-                corner_sw[1] - width_padding_tb,
-            ),
+        "mirror-bottom": [  # Corrected: Extends upward, correctly aligned
+            (corner_sw[0], corner_sw[1]),  # Aligned with SW (corrected)
+            (corner_se[0], corner_se[1]),  # Aligned with SE (corrected)
+            (bottom_mid_right[0], bottom_mid_right[1]),  # Right projected point (at bottom border)
+            (bottom_mid_left[0], bottom_mid_left[1]),  # Left projected point (at bottom border)
         ],
-        "mirror-left": [
-            (
-                corner_nw[0] - padding_left_right,
-                corner_nw[1] - def_side - padding_left_right,
-            ),
-            (corner_nw[0] - padding_left_right, corner_nw[1] + padding_left_right),
-            (corner_sw[0] + padding_left_right, corner_sw[1] + padding_left_right),
-            (
-                corner_sw[0] + padding_left_right,
-                corner_sw[1] - def_side - padding_left_right,
-            ),
+        "mirror-left": [  # Extends rightward toward the central rectangle
+            (left_mid_top[0], left_mid_top[1]),  # Top projected point (at left border)
+            (corner_nw[0], corner_nw[1]),  # Aligned with NW (corrected)
+            (corner_sw[0], corner_sw[1]),  # Aligned with SW (corrected)
+            (left_mid_bottom[0], left_mid_bottom[1]),  # Bottom projected point (at left border)
         ],
-        "mirror-right": [
-            (corner_ne[0] - padding_left_right, corner_ne[1] - padding_left_right),
-            (
-                corner_ne[0] - padding_left_right,
-                corner_ne[1] + def_side + padding_left_right,
-            ),
-            (
-                corner_se[0] + padding_left_right,
-                corner_se[1] + def_side + padding_left_right,
-            ),
-            (corner_se[0] + padding_left_right, corner_se[1] - padding_left_right),
+        "mirror-right": [  # Extends leftward toward the central rectangle
+            (corner_ne[0], corner_ne[1]),  # Aligned with NE (corrected)
+            (right_mid_top[0], right_mid_top[1]),  # Top projected point (at right border)
+            (right_mid_bottom[0], right_mid_bottom[1]),  # Bottom projected point (at right border)
+            (corner_se[0], corner_se[1]),  # Aligned with SE (corrected)
         ],
     }
+
 
     default_colors = {
         "central": "red",
