@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 
+
 #%%
 
 
@@ -71,18 +72,31 @@ def get_video_paths(main_path):
     side_paths = []
     bottom_paths = []
     p = pathlib.Path(main_path)
-
+    
+    # Get today's date in YYYYMMDD format
+    today = datetime.now().strftime('%Y%m%d')
+    
+    # Pattern for matching directory names (looking for the final timestamp) it should change in the future
+    dir_pattern = re.compile(r'multicam_video_.*_cropped_' + today + r'\d{6}$')
+    
     for video in p.rglob("*"):
+        # Check if the immediate parent directory matches our pattern
+
+        if not dir_pattern.match(video.parent.name):
+            continue
+            
         if "calibration" in [parent.name for parent in video.parents]:
             continue
+            
         if (
             video.is_file()
-            and video.name.endswith(".mp4")  # sub mp4 with avi.avi
+            and video.name.endswith(".mp4")
             and "central" not in video.name
         ):
             side_paths.append(str(video))
         if "central" in video.name:
             bottom_paths.append(str(video))
+            
     return side_paths, bottom_paths
 
 # function that takes video paths and encode them and convert them into mp4 format to run inference using ffmpeg
@@ -113,7 +127,7 @@ def run_inference(enc_vid, model):
     Input: video_paths: list: list of paths to all the videos in the main folder
     It runs the model inference on the encoded videos and saves the results in a specific folder.
     """
-    for video in enc_vid:
+    for n, video in enumerate(enc_vid):
         output_folder = video.replace(".avi.mp4", "predictions.slp")
         print(f"Running inference on video: {video}")
         try:
@@ -121,13 +135,14 @@ def run_inference(enc_vid, model):
                 ["sleap-track", "-m", model, "-o", output_folder, video], check=True
             )
             print(f"Inference results saved to: {output_folder}")
+            print(f"Video {n+1} out of {len(enc_vid)}")
         except subprocess.CalledProcessError as e:
             print(f"Error running comman {output_folder}, error: {e}, for video: {video}")
 
 
 if __name__ == "__main__":
     GEN_VIDEO_PATH = (
-        r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\test_cropping\try_model\multicam_video_2024-08-05T15_45_21_cropped_20241210155931"
+        r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting"
     )
 
 
@@ -141,9 +156,9 @@ if __name__ == "__main__":
     bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\250116_131653.single_instance.n=416"
 
     side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
-    print(side_paths)
+    print(len(side_paths), len(bottom_paths))
 
-    # run_inference(bottom_paths, bottom_model)
+    run_inference(bottom_paths, bottom_model)
     run_inference(side_paths, side_model)
     print("Inference done!")
 

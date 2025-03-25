@@ -13,8 +13,8 @@ from utils import crop_all_views
 
 # change location of models
 MODELS_LOCATIONS = {
-    "side": r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500",
-    "bottom": r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161",
+    "side": r"D:\SLEAP_models\SLEAP_side_models\models\250314_091459.single_instance.n=659",
+    "bottom": r"D:\SLEAP_models\SLEAP_bottom_model\models\250116_131653.single_instance.n=416",
 }
 
 MODELS_MAP_TO_VIEW = {
@@ -69,11 +69,11 @@ def process_videos_in_folder(folder, json_file, timestamp, skip_existing=True):
         print(cropped_filenames, '\n', type(cropped_filenames))
         cropped_filenames = [f.result() for f in cropped_filenames]
 
-        # TODO process cropped videos usin run_inference:
-        for model_name, views in MODELS_MAP_TO_VIEW.items():
-            videos_to_process = [video_path for video_path in cropped_filenames if any([view in video_path.name for view in views])]
-            for video_path in videos_to_process:
-                run_inference(video_path, MODELS_LOCATIONS[model_name])
+        # # TODO process cropped videos usin run_inference:
+        # for model_name, views in MODELS_MAP_TO_VIEW.items():
+        #     videos_to_process = [video_path for video_path in cropped_filenames if any([view in video_path.name for view in views])]
+        #     for video_path in videos_to_process:
+        #         run_inference(video_path, MODELS_LOCATIONS[model_name])
         
 
         
