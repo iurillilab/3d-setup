@@ -11,6 +11,7 @@ import numpy as np
 from tqdm import tqdm
 from utils import crop_all_views
 
+# change location of models
 MODELS_LOCATIONS = {
     "side": r"D:\SLEAP_models\SLEAP_side_models\models\241007_120850.single_instance.n=500",
     "bottom": r"D:\SLEAP_models\SLEAP_bottom_model\models\241106_104724.single_instance.n=161",
@@ -41,23 +42,6 @@ def run_inference(video, model):
 
 def process_videos_in_folder(folder, json_file, timestamp, skip_existing=True):
     avi_files = list(Path(folder).rglob("*.avi"))
-    # filter out files from previous runs, if in the name there's
-    # central, mirror-top, mirror-bottom, mirror-left, mirror-right:
-    avi_files = [
-        f
-        for f in avi_files
-        if not any(
-            view in f.stem
-            for view in [
-                "central",
-                "mirror-top",
-                "mirror-bottom",
-                "mirror-left",
-                "mirror-right",
-            ]
-        )
-    ]
-
     # filter out files from previous runs, if in the name there's
     # central, mirror-top, mirror-bottom, mirror-left, mirror-right:
     avi_files = [
@@ -110,12 +94,13 @@ if __name__ == "__main__":
         "json_file", type=str, help="JSON file with cropping parameters"
     )
     parser.add_argument(
-        "skip_existing",
-        action="store_true",
-        help="Skip processing files that have already been processed",
-        default=True,
+        "--skip_existing",
+        action="store_false",
+        help="Process all files, including ones that have been processed before",
+        dest="skip_existing",
+        default=False,
     )
 
     args = parser.parse_args()
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    process_videos_in_folder(Path(args.folder), Path(args.json_file), timestamp)
+    process_videos_in_folder(Path(args.folder), Path(args.json_file), timestamp, skip_existing=args.skip_existing)
