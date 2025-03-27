@@ -76,7 +76,7 @@ def find_closest_calibration_dir(dir_path: Path) -> Path | None:
         current = current.parent
     return None
 
-def find_dirs_with_matching_views(root_dir: Path, expected_views: set) -> list[Path]:
+def find_dirs_with_matching_views(root_dir: Path, expected_views: set, recompute=True) -> list[Path]:
     """
     Find directories containing exactly 5 SLP files with matching camera views.
     """
@@ -84,40 +84,47 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set) -> list[P
 
     # Windows regex
     #cam_regex = r"^[A-Za-z]:\\(?:[^\\]+\\)*multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$"
-    cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
+    # cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
 
-
+    all_candidate_folders = [f for f in root_dir.rglob("multicam_video_*_cropped_*") if f.is_dir()]
+    parent_dict = {folder.parent: [] for folder in all_candidate_folders}
+    
+    for candidate_folder in all_candidate_folders:
+        parent_dict[candidate_folder.parent].append(candidate_folder)
+    
+    last_folders = [sorted(folders)[-1] for folders in parent_dict.values()]
 
     #Unix regex
     #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$"  # Updated regex
 
     # Recursively iterate through all directories
-    for directory in root_dir.rglob('*'):
-        
-        if not directory.is_dir():
-            continue
-        if "Calibration" in [parent.name for parent in directory.parents]:
+    # for directory in root_dir.rglob('*'):
+    for directory in last_folders:    
+        #if not directory.is_dir():
+        #    continue
+
+        if "calibration" in [parent.name.lower() for parent in directory.parents]:
             continue
         # Get all SLP files in the current directory
         slp_files = list(directory.glob('*.slp'))
-        
-        # Skip if not exactly 5 files
-        if len(slp_files) < 5:
+
+        if not recompute and len(directory.glob("*triangulated_points*.h5")) > 0:
             continue
 
         # Extract camera views from filenames
-        current_views = set()
-        for f in slp_files:
-            match = re.search(cam_regex, f.name)
-            if match:
-                camera_name = match.group(1)  # Extract camera view name
-                current_views.add(camera_name)
-            else:
-                continue
+        # current_views = set()
+        #for f in slp_files:
+        #    match = re.search(cam_regex, f.name)
+        #    if match:
+        #        camera_name = match.group(1)  # Extract camera view name
+        #        current_views.add(camera_name)
+        #    else:
+        #        continue
 
 
         # If we found exactly 5 matching views and they match the expected views
-        if len(current_views) == 5 and current_views == expected_views:
+        # if len(current_views) == 5 and current_views == expected_views:
+        if len(slp_files) == 5:
             valid_dirs.append(directory)
 
     return valid_dirs
@@ -301,6 +308,8 @@ def generate_calibration_data(calibration_dir):
     cam_names = [Path(p).stem.split("_")[-1].split(".avi")[0] for p in video_paths]
     write_calibration_toml(output_dir / "calibration_from_mc.toml", 
                         cam_names, all_img_sizes, adj_extrinsics, adj_intrinsics, result)
+    
+    return output_dir
 
 
 if __name__ == "__main__":
@@ -325,7 +334,7 @@ if __name__ == "__main__":
     "scale_length_weak": 0.5,
     "n_deriv_smooth": 2,
     "reproj_error_threshold": 150,
-    "constraints": [['lear','rear'], ['nose','rear'], ['nose','lear'], ['tailbase', 'upperback']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+    "constraints": [['lear','rear'], ['nose','rear'], ['nose','lear'], ['tailbase', 'upperback'], ['uppermid', 'upperback'], ['upperforward', 'uppermid']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
     "constraints_weak": [] #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
     }
     print(f"Found {len(valid_dirs)} directories with matching views, and {len(set(calib_dirs))} calibration directories/n Proceeding with calibration")
@@ -339,17 +348,22 @@ if __name__ == "__main__":
 
     # just using a signle calibration dir for now
     calibration_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240722\calibration\multicam_video_2024-07-24T14_13_45_cropped_20241209165236")
+    if not calibration_dir:
+        calibration_data_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240722\calibration\multicam_video_2024-07-24T14_13_45_cropped_20241209165236")
+        calibration_dir = generate_calibration_data(calibration_data_dir) 
+    
     cam_names, img_sizes, extrinsics, intrinsics, calib_toml_path = load_calibration(calibration_dir)
 
 
     for valid_dir in tqdm(valid_dirs, desc="Triangulating directories"):
         print(valid_dir)
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         ds = create_2d_ds(valid_dir)
         _3d_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
         _3d_ds.attrs['fps'] = 'fps'
         _3d_ds.attrs['source_file'] = 'anipose'
         # Save the triangulated points using the directory name
-        save_path = valid_dir / f"{valid_dir.name}_triangulated_points.h5"
+        save_path = valid_dir / f"{valid_dir.name}_triangulated_points_{timestamp}.h5"
         _3d_ds.to_netcdf(save_path)
 
     # sovle issue with missing calibration dir during first day, (just copy a calibration dir from another day)
