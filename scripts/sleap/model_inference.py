@@ -71,31 +71,44 @@ def get_video_paths(main_path):
     """
     side_paths = []
     bottom_paths = []
-    p = pathlib.Path(main_path)
+    main_path = pathlib.Path(main_path)
     
     # Get today's date in YYYYMMDD format
     today = datetime.now().strftime('%Y%m%d')
     
     # Pattern for matching directory names (looking for the final timestamp) it should change in the future
-    dir_pattern = re.compile(r'multicam_video_.*_cropped_' + today + r'\d{6}$')
+    # dir_pattern = re.compile(r'multicam_video_.*_cropped_' + today + r'\d{6}$')
+    all_candidate_folders = [f for f in main_path.rglob("multicam_video_*_cropped_*") if f.is_dir()]
     
-    for video in p.rglob("*"):
-        # Check if the immediate parent directory matches our pattern
+    parent_dict = {folder.parent: [] for folder in all_candidate_folders}
+    for candidate_folder in all_candidate_folders:
+        parent_dict[candidate_folder.parent].append(candidate_folder)
+    
+    # Process only last folder for each parent
+    last_folders = [sorted(folders)[-1] for folders in parent_dict.values()]
+    [print(f) for f in last_folders]
 
-        if not dir_pattern.match(video.parent.name):
-            continue
-            
-        if "calibration" in [parent.name for parent in video.parents]:
-            continue
-            
-        if (
-            video.is_file()
-            and video.name.endswith(".mp4")
-            and "central" not in video.name
-        ):
-            side_paths.append(str(video))
-        if "central" in video.name:
-            bottom_paths.append(str(video))
+    for candidate_folder in last_folders:        
+        for video in candidate_folder.glob("*"):
+            # Check if the immediate parent directory matches our pattern
+
+            #if not dir_pattern.match(video.parent.name):
+            #    continue
+            # if there is a sleap file
+            if len(list(candidate_folder.glob(f"{video.name.split('.avi')[0]}*.slp"))) > 0: 
+                continue
+                
+            if "calibration" in [parent.name.lower() for parent in video.parents]:
+                continue
+                
+            if (
+                video.is_file()
+                and video.name.endswith(".mp4")
+                and "central" not in video.name
+            ):
+                side_paths.append(str(video))
+            if "central" in video.name:
+                bottom_paths.append(str(video))
             
     return side_paths, bottom_paths
 
@@ -158,8 +171,8 @@ if __name__ == "__main__":
     side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
     print(len(side_paths), len(bottom_paths))
 
-    run_inference(bottom_paths, bottom_model)
-    run_inference(side_paths, side_model)
+    #run_inference(bottom_paths, bottom_model)
+    #run_inference(side_paths, side_model)
     print("Inference done!")
 
 
