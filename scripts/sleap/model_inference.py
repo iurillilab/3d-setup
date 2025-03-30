@@ -36,6 +36,35 @@ def get_video_paths(main_path):
             
     return side_paths, bottom_paths
 
+def check_sleap_files_complete(main_path):
+    """
+    Checks if the most recent directories have exactly 5 .slp files each.
+    Returns a list of directories that don't have exactly 5 .slp files.
+    """
+    main_path = pathlib.Path(main_path)
+    incomplete_dirs = []
+
+    # Find all candidate folders (same logic as get_video_paths)
+    all_candidate_folders = [f for f in main_path.rglob("multicam_video_*_cropped_*") if f.is_dir()]
+    parent_dict = {folder.parent: [] for folder in all_candidate_folders}
+    
+    for candidate_folder in all_candidate_folders:
+        parent_dict[candidate_folder.parent].append(candidate_folder)
+    
+    # Get the most recent folder for each parent
+    last_folders = [sorted(folders)[-1] for folders in parent_dict.values()]
+    
+    # Check each folder for .slp files
+    for folder in last_folders:
+        slp_files = list(folder.glob("*.slp"))
+        if len(slp_files) != 5:
+            incomplete_dirs.append({
+                'path': str(folder),
+                'count': len(slp_files)
+            })
+    
+    return incomplete_dirs
+
 def run_single_inference(video, model):
     """
     Runs inference on a single video.
@@ -68,7 +97,14 @@ if __name__ == "__main__":
     print(f"Found {len(side_paths)} side videos and {len(bottom_paths)} bottom videos.")
 
     # Run inference in parallel
-    run_inference_parallel(side_paths, side_model, num_workers=3)
-    run_inference_parallel(bottom_paths, bottom_model, num_workers=3)
-
-    print("Inference done!")
+    # run_inference_parallel(side_paths, side_model, num_workers=3)
+    # run_inference_parallel(bottom_paths, bottom_model, num_workers=3)
+    incomplete = check_sleap_files_complete(GEN_VIDEO_PATH)
+    if incomplete:
+        print("\nWarning: The following directories don't have exactly 5 .slp files:")
+        for dir_info in incomplete:
+            print(f"Directory: {dir_info['path']}")
+            print(f"Found {dir_info['count']} .slp files instead of 5")
+    else:
+        print("\nAll directories have exactly 5 .slp files!")
+    #print("Inference done!")
