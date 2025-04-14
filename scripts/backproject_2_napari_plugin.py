@@ -7,6 +7,7 @@ import numpy as np
 
 file = Path("/Users/vigji/Downloads/multicam_video_2024-08-07T15_48_36_cropped_20250325101012/reprojection_multicam_video_2024-08-07T15_48_36_cropped_20250325101012_triangulated_points_20250330-234823.h5")
 
+
 # read file from netcdf
 ds = xr.open_dataset(file)
 
