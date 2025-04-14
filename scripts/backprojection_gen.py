@@ -19,6 +19,8 @@ from datetime import datetime
 import flammkuchen as fl
 from threed_utils.io import write_calibration_toml
 from tqdm import tqdm, trange
+from scipy.ndimage import binary_erosion, binary_dilation
+import einops
 
 from multicam_calibration.geometry import project_points
 #%%
@@ -102,7 +104,94 @@ def backproject_triangulated_points(xarray_ds, extrinsics, intrinsics, cam_names
     
 
     return reprojections
+def filtering_Interpolate_Speed(
+    xarray: xr = None,
+    conf: np.array = None,
+    percentile: int = 99,
+    kernel_size: int = 1
+):
+    """
+    Filters and interpolates points in a trajectory (shape: frames, 3)
+    by removing high-speed jumps based on a percentile threshold.
 
+    Parameters:
+        arr: np.ndarray, shape (n_frames, 3)
+        percentile: int, percentile of speed to use as threshold
+        kernel_size: int, smoothing kernel width for removing jittery frames
+
+    Returns:
+        interpolated: np.ndarray, cleaned and interpolated array
+    """
+
+    arr = xarray.position.values[:, :, :, 0]
+    assert isinstance(arr, np.ndarray), "arr must be a numpy array"
+    arr = arr.transpose(0, 2, 1)
+    conf = conf.squeeze()
+    assert arr.shape[-1] == 3
+    com = np.median(arr,axis=1)                        # (n_frames, n_dims)
+    rel = arr - com[:, np.newaxis, :]              # (n_frames, n_keypoints, n_dims)
+    rel_speed = np.linalg.norm(np.diff(rel, axis=0), axis=2)
+
+
+    # Compute threshold using the specified percentile
+    t = np.percentile(rel_speed, percentile)
+
+    # Mark bad points (spikes)
+    bad_points = rel_speed > t
+    # Add placeholder to align with original array shape
+    place_holder = np.zeros((1, bad_points.shape[1]), dtype=bool)
+
+# Vertically stack to match frame count
+    bad_points = np.vstack([place_holder, bad_points])
+
+    # Expand mask with convolution (smoothing)
+    kernel = np.ones(kernel_size).astype(int)
+    # Apply 1D convolution per keypoint (column-wise)
+    expanded_mask = np.apply_along_axis(
+        lambda col: np.convolve(col, kernel, mode='same') > 0,
+        axis=0,
+        arr=bad_points
+    )
+    new_confidence = conf.copy()
+    # Mask bad frames
+    new_confidence[expanded_mask] = np.nan
+
+    # Interpolate
+    # df_points = pd.DataFrame(new_arr)
+    # df_interpolated = df_points.interpolate(method='linear', axis=0).fillna(method='bfill')
+    
+    return np.expand_dims(new_confidence, axis=-1) 
+
+
+
+def nan_mask_cleaner(confidence_array, fps=30, threshold_sec=3):
+    """
+    confidence_array: (frames,) — 1D array with NaNs
+    fps: frames per second
+    threshold_sec: how many seconds of NaNs you want to remove (e.g., 3)
+    """
+    nan_mask = np.isnan(confidence_array)  # True where NaN
+
+    # Structuring element: how many consecutive frames count as a "long" gap
+    kernel_size = int(fps * threshold_sec)
+    structure = np.ones(kernel_size)
+
+    # Remove short gaps (i.e., erosion removes narrow stretches of True)
+    cleaned_mask = binary_erosion(nan_mask, structure=structure)
+    cleaned_mask = binary_dilation(cleaned_mask, structure=structure)
+
+    return cleaned_mask  # boolean mask of length `frames`
+
+def cut_long_nans_seq(coordinates:xr, conf:np.ndarray, fps:int=30, threshold_sec:int=3) -> np.ndarray:
+
+    arr = coordinates.position.values[:, :, :, 0]
+    assert isinstance(arr, np.ndarray), "arr must be a numpy array"
+    arr = arr.transpose(0, 2, 1)
+    conf = conf.squeeze()
+
+    mean_array = einops.reduce(conf, 'frames keypoints -> frames', 'mean')
+    bad_frames = nan_mask_cleaner(mean_array, fps, threshold_sec)
+    return bad_frames
 
 
 
@@ -130,11 +219,18 @@ if __name__ == "__main__":
         print("Processing file:", h5_file)
         # Load the triangulated points
         xarray_ds = xr.open_dataset(h5_file)
-        
+
 
         #extract confidence from the data
         # Expand confidence to shape (n_cameras, n_frames, n_keypoints)
         confidence = xarray_ds.confidence.values  # shape: (n_frames, n_keypoints)
+        bad_frames = cut_long_nans_seq(xarray_ds, confidence, fps=30, threshold_sec=3)
+        print(bad_frames.shape, confidence.shape)
+        xarray_ds_filtered = xarray_ds.isel(time=~xr.DataArray(bad_frames, dims="time"))
+        confidence_filtered = confidence[~bad_frames]
+
+        # Pass filtered data to filtering function
+        confidence_filt = filtering_Interpolate_Speed(xarray_ds_filtered, confidence_filtered, percentile=99, kernel_size=5)
         confidence_expanded = np.repeat(confidence[None, :, :], len(cam_names), axis=0)
 
         # Make sure shape is exactly (n_cameras, n_frames, n_keypoints)
@@ -143,14 +239,14 @@ if __name__ == "__main__":
 
         # Back-project the triangulated points to 2D camera coordinates
         reprojections = backproject_triangulated_points(xarray_ds, extrinsics, intrinsics, cam_names)
-
-        # save to xarray 
+        reprojections_filt = reprojections.copy()
+        reprojections_filt[np.isnan(confidence_expanded)] = np.nan
 
 
         # Save to xarray
         reprojections_ds = xr.Dataset(
             {
-                "reprojections": (("camera", "time", "keypoints", "xy"), reprojections),
+                "reprojections": (("camera", "time", "keypoints", "xy"), reprojections_filt),
                 "confidence": (("camera", "time", "keypoints"), confidence_expanded),
             },
             coords={
@@ -169,10 +265,4 @@ if __name__ == "__main__":
                 
 
         # save reprojection into new dir 
-
-
-
-
-
-
 
