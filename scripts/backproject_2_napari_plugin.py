@@ -1,3 +1,4 @@
+#%%
 from movement.io.save_poses import to_dlc_file
 from movement.io.load_poses import from_numpy
 from pathlib import Path
@@ -5,16 +6,15 @@ import xarray as xr
 import numpy as np
 from matplotlib import pyplot as plt
 
-filt = True  # if True we are looking at filtered reprojections, expecting the filename to start with "filtreprojection" 
+filt = False  # if True we are looking at filtered reprojections, expecting the filename to start with "filtreprojection" 
 # (easily changed/ignored if needed)
-file_str = "/Users/vigji/Downloads/multicam_video_2024-08-07T15_48_36/reprojection_multicam_video_2024-08-07T15_48_36_cropped_20250325101012_triangulated_points_20250330-234823.h5"
+file_str = r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240803\M5\143211\multicam_video_2024-08-03T14_58_09_cropped_20250325101012\reprojection_multicam_video_2024-08-03T14_58_09_cropped_20250325101012_triangulated_points_20250401-073326.h5"
 
 if filt:
     file_str = file_str.replace("reprojection", "filtreprojection")
 
 file = Path(file_str)
-
-
+ 
 # read file from netcdf
 ds = xr.open_dataset(file)
 
