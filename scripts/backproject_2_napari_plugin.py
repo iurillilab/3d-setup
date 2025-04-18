@@ -24,7 +24,7 @@ for camera in ds.coords["camera"].values:
     sub_ds = ds.sel(camera=camera, drop=True)
     vals = sub_ds.reprojections.values
     vals = np.clip(vals, -CLIP_AT, CLIP_AT)
-    vals[np.isnan(vals)] = -3000
+    # vals[np.isnan(vals)] = -3000
 
     sub_ds.reprojections.values = vals
 
