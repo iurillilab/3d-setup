@@ -299,7 +299,7 @@ if __name__ == "__main__":
                 video_dict,
                 num_frames=NUM_FRAMES,
                 layout="horizontal",  # or "horizontal"
-                output_path=output_path / "tiled_output.mp4")
+                output_path=output_path / f"{root_dir.name}.mp4")
             print(f"Tiled video saved to {output_path / 'tiled_output.mp4'}")
             ds = build2dDS(slp_dict)
 
