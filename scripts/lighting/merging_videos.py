@@ -10,6 +10,7 @@ import argparse
 import re
 import cv2 
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 def find_dirs_with_matching_views(root_dir: Path) -> list[Path]:
     """
@@ -228,7 +229,7 @@ def tile_videos(video_dict, num_frames=None, layout="horizontal", output_path=No
 
     return tiled_frames, frame_mapping
 
-def shift_coordinates(dataset: xr.Dataset, frame_mapping: dict):
+def shift_coordinates(dataset: xr.Dataset, frame_mapping: dict)-> xr.Dataset:
     shifted = dataset.copy(deep=True)
 
     space_labels = list(shifted.coords["space"].values)
@@ -273,44 +274,42 @@ def plot_keypoints_on_frame(frame, dataset: xr.Dataset, time_index=0, point_size
 
 if __name__ == "__main__":
 
-    # parser = argparse.ArgumentParser(description="Find directories with matching camera views")
-    # parser.add_argument("root_dir", type=str, help="Root directory to search for SLP files")
-    # args = parser.parse_args()
-
-    # root_dir = Path(args.root_dir)
-    # valid_dirs = find_dirs_with_matching_views(root_dir)
-
-    # for dir in valid_dirs:
-    #     print(dir)
-    # print('import works')
+    parser = argparse.ArgumentParser(description="Process and tile videos.")
+    parser.add_argument( "--root_dirs", nargs="+", type=str, help="One or more root directories containing SLP and video files.")
+    parser.add_argument("--num_frames", type=int, default=100, help="Number of frames to process.")
+    parser.add_argument("--output_path", type=str, default="tiled_output.mp4", help="Path to save the tiled video.")
 
 
-    root_dir = '/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012'
-    N_FRAMES = 100
-
-    slp_dict, video_dict = buildDictFiles(Path(root_dir))
-
-    # now we have a dict with slp files, videos. We need to: open array, open videos, 
+    args = parser.parse_args()
+    NUM_FRAMES = args.num_frames
+    dirs = [Path(p) for p in args.root_dirs]
+    output_path = Path(args.output_path)
 
 
 
-    # given video, loaded, cut it, for each view
-    tiled_frames, mapping = tile_videos(
-    video_dict,
-    num_frames=N_FRAMES,
-    layout="horizontal",  # or "horizontal"
-    output_path="tiled_output.mp4")
+    # "D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project"
 
-    # idea of mapping 
-    # x_orig, y_orig = pred_from_original
-    # x_offset, y_offset, _, _ = frame_mapping['top']  
-    # x_new = x_orig + x_offset
-    # y_new = y_orig + y_offset
+    for root_dir in tqdm(dirs, desc="Processing directories"):
+            
+            
+            slp_dict, video_dict = buildDictFiles(Path(root_dir))
 
-  
-    ds = build2dDS(slp_dict)
 
-    shifted_ds = shift_coordinates(ds, mapping)
+            tiled_frames, mapping = tile_videos(
+                video_dict,
+                num_frames=NUM_FRAMES,
+                layout="horizontal",  # or "horizontal"
+                output_path=output_path / "tiled_output.mp4")
+            print(f"Tiled video saved to {output_path / 'tiled_output.mp4'}")
+            ds = build2dDS(slp_dict)
 
-    plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
+            shifted_ds = shift_coordinates(ds, mapping)
+            save_path = output_path / f"predictions_{root_dir.name}.h5"
+            shifted_ds.to_netcdf(save_path)
+            print(f"Saved shifted dataset to {save_path}")
+
+            
+
+            plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
+
 
