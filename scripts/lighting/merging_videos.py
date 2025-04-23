@@ -275,14 +275,15 @@ def plot_keypoints_on_frame(frame, dataset: xr.Dataset, time_index=0, point_size
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Process and tile videos.")
-    parser.add_argument( "--root_dirs", nargs="+", type=str, help="One or more root directories containing SLP and video files.")
     parser.add_argument("--num_frames", type=int, default=100, help="Number of frames to process.")
     parser.add_argument("--output_path", type=str, default="tiled_output.mp4", help="Path to save the tiled video.")
 
 
     args = parser.parse_args()
     NUM_FRAMES = args.num_frames
-    dirs = [Path(p) for p in args.root_dirs]
+    root_dirs = [r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240722\M1\101552\multicam_video_2024-07-22T10_19_22_cropped_20250325101012", 
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M4\144038\multicam_video_2024-08-05T15_05_00_cropped_20250325101012"]
+    dirs = [Path(p) for p in root_dirs]
     output_path = Path(args.output_path)
 
 
@@ -299,7 +300,7 @@ if __name__ == "__main__":
                 video_dict,
                 num_frames=NUM_FRAMES,
                 layout="horizontal",  # or "horizontal"
-                output_path=output_path / "tiled_output.mp4")
+                output_path=output_path / f"{root_dir.name}.mp4")
             print(f"Tiled video saved to {output_path / 'tiled_output.mp4'}")
             ds = build2dDS(slp_dict)
 

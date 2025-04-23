@@ -37,11 +37,11 @@ def extract_keyframes(video_path, dataset, stride=50, individual=0):
 
     return keyframe_imgs, keyframe_ds, keyframe_indices
 
-
+# add folder from other script 
 def save_keyframes_to_disk(frames, output_dir, prefix="frame"):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     for i, frame in enumerate(frames):
-        path = Path(output_dir) / f"{prefix}_{i:04d}.png"
+        path = Path(output_dir) / f"{prefix}_{i:06d}.png"
         cv2.imwrite(str(path), frame)
 
 
