@@ -49,32 +49,33 @@ def export_ds_to_dlc_annotation(
     main_output_folder: Path,
     video_name: str = "test_movie.avi",
 ):
-    TEMP_LABELS_FILENAME = "labels.csv"
-    TEMP_LABELS_INDIVIDUAL_FILENAME = "labels_individual_0.csv"
 
-    # save as labels csv:
+    video_name = video_name.split(".")[0]
+    final_name_csv = f"{video_name}_movement.csv"
+    final_name_h5 = f"{video_name}_movement.h5"
+    
+    main_output_folder = Path(main_output_folder)
+    output_folder = main_output_folder / video_name
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    TEMP_LABELS_FILENAME = "labels.h5"
+    fname, suffix = TEMP_LABELS_FILENAME.split(".")
+    test_labels_individual_filename = f"{fname}_individual_0.{suffix}"
+
     to_dlc_file(labels_ds, output_folder / TEMP_LABELS_FILENAME, split_individuals=True)
+    df = pd.read_hdf(output_folder / test_labels_individual_filename)
 
-    # Retarded fix for header:
-    # Load csv as pandas DataFrame:
-    df = pd.read_csv(output_folder / TEMP_LABELS_INDIVIDUAL_FILENAME, header=[0, 1, 2])
     # change df index to be multiindex with first level "labeled-data", second level movie_name.split(".")[0], third name frames_names:
     df.index = pd.MultiIndex.from_tuples(
         [
-            ("labeled-data", video_name.split(".")[0], frames_names[i])
+            ("labeled-data", movie_name.split(".")[0], frames_names[i])
             for i in range(len(frames_names))
         ]
     )
-    df.to_csv(output_folder / TEMP_LABELS_FILENAME)
-    df = pd.read_csv(output_folder / TEMP_LABELS_FILENAME, header=None)
-    df.iloc[:3, 0] = ["scorer", "bodyparts", "coords"]
-    # drop fourth column by index:
-    df = df.drop(columns=[3])
-    df.to_csv(output_folder / f"{video_name}_movement.csv", header=False, index=False)
+    df.to_csv(output_folder / final_name_csv) 
+    df.to_hdf(output_folder / final_name_h5, key="df", mode="w")
 
-    # Remove "labels.csv" and "labels_individual_0.csv" using pathlib:
-    (output_folder / TEMP_LABELS_FILENAME).unlink()
-    (output_folder / TEMP_LABELS_INDIVIDUAL_FILENAME).unlink()
+    (output_folder / test_labels_individual_filename).unlink()
 
 
 def extract_keyframes(video_path, dataset, n_frames=20):
