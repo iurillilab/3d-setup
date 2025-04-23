@@ -1,3 +1,4 @@
+# %%
 from movement.io.save_poses import to_dlc_file
 from pathlib import Path
 import pandas as pd
@@ -44,20 +45,20 @@ def export_ds_to_dlc_annotation(
     main_output_folder: Path,
     video_name: str = "test_movie.avi",
 ):
-    TEMP_LABELS_FILENAME = "labels.csv"
-    TEMP_LABELS_INDIVIDUAL_FILENAME = "labels_individual_0.csv"
 
     video_name = video_name.split(".")[0]
+    final_name_csv = f"{video_name}_movement.csv"
+    final_name_h5 = f"{video_name}_movement.h5"
+    
     main_output_folder = Path(main_output_folder)
     output_folder = main_output_folder / video_name
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # save as labels csv:
+    TEMP_LABELS_INDIVIDUAL_FILENAME = "labels_individual_0.h5"
+    TEMP_LABELS_FILENAME = "labels.h5"
     to_dlc_file(labels_ds, output_folder / TEMP_LABELS_FILENAME, split_individuals=True)
+    df = pd.read_hdf(output_folder / TEMP_LABELS_INDIVIDUAL_FILENAME)
 
-    # Retarded fix for header:
-    # Load csv as pandas DataFrame:
-    df = pd.read_csv(output_folder / TEMP_LABELS_INDIVIDUAL_FILENAME, header=[0, 1, 2])
     # change df index to be multiindex with first level "labeled-data", second level movie_name.split(".")[0], third name frames_names:
     df.index = pd.MultiIndex.from_tuples(
         [
@@ -65,16 +66,9 @@ def export_ds_to_dlc_annotation(
             for i in range(len(frames_names))
         ]
     )
-    df.to_csv(output_folder / TEMP_LABELS_FILENAME)
-    df = pd.read_csv(output_folder / TEMP_LABELS_FILENAME, header=None)
-    df.iloc[:3, 0] = ["scorer", "bodyparts", "coords"]
-    # drop fourth column by index:
-    df = df.drop(columns=[3])
-    df.to_csv(output_folder / f"{video_name}_movement.csv", header=False, index=False)
+    df.to_csv(output_folder / final_name_csv) 
+    df.to_hdf(output_folder / final_name_h5, key="df", mode="w")
 
-    # Remove "labels.csv" and "labels_individual_0.csv" using pathlib:
-    (output_folder / TEMP_LABELS_FILENAME).unlink()
-    (output_folder / TEMP_LABELS_INDIVIDUAL_FILENAME).unlink()
 
 
 ####################
@@ -117,3 +111,21 @@ labels_folder.mkdir(parents=True, exist_ok=True)
 labels_ds = ds_stacked.isel(time=frame_idxs)
 
 export_ds_to_dlc_annotation(labels_ds, frames_names, labels_folder, movie_name)
+# %%
+import flammkuchen as fl
+
+test_h5 = '/Users/vigji/Desktop/mouseface-Luigi Petrucco-2022-06-15/labeled-data/Basler_acA1440-220um__40075240__20220608_122024069/CollectedData_Luigi Petrucco.h5'
+fl_ds = fl.load(test_h5)
+correct_df = pd.read_hdf(test_h5)
+to_test_df = pd.read_hdf("/Users/vigji/Desktop/dummy_project/labels/test_movie/test_movie_movement.h5")
+# %%
+to_test_df.head()
+# %%
+correct_df.head()
+# %%
+to_test_df.iloc[:, 1:]
+# %%
+correct_df.columns
+# %%
+to_test_df.columns
+# %%
