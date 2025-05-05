@@ -9,6 +9,8 @@ import plotly.express as px
 import pickle
 import multicam_calibration as mcc
 from mpl_toolkits.mplot3d import Axes3D
+import xarray as xr
+import argparse
 
 #%%
 
@@ -234,8 +236,7 @@ def animator_3d_plotly_xarray(datasets, arena_xarray=None, labels=None, skeleton
     return fig
 
 if __name__ == "__main__":
-    import argparse
-    import xarray as xr
+
     
     parser = argparse.ArgumentParser(description='Create 3D animation from pose and arena data')
     parser.add_argument('--pose_files', type=str, nargs='+', required=True,
@@ -252,6 +253,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     time_slice = (0, 500)
     # Load the datasets
+
     try:
         pose_datasets = [xr.open_dataset(file) for file in args.pose_files]
         pose_datasets = [ds.sel(time=slice(*time_slice)) for ds in pose_datasets]
