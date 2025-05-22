@@ -287,3 +287,10 @@ if __name__ == "__main__":
         save_path=args.output
     )
     fig.show()
+
+
+# python animation_tools.py --pose_files  /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012/multicam_video_2024-07-22T10_19_22_cropped_20250325101012_triangulated_points_20250327-124608.h5 \
+#           --arena_file /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/newarena.h5\
+#              --output /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/animation_try_filtered.html \
+#             --speed 200 \
+#             --pose_labels  "anipose_optimised extra"

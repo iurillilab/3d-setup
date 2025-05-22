@@ -349,3 +349,335 @@ print(ds.info)
 
 ds_to_napari_tracks(ds)
 # %%
+import json
+arena_path = '/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_20241209-164946 1.json'
+
+with open(arena_path, 'r') as f:
+    arena_dict = json.load(f)
+
+
+
+points_by_view =arena_dict[-1]['points_coordinate']
+
+
+cam_names = list(points_by_view.keys())
+
+views_dss = []
+
+for view_name in cam_names:
+    coords = np.array(points_by_view[view_name])[:, ::-1]
+    
+    # Add time and individual dimensions
+
+    position_array = coords[np.newaxis, np.newaxis, :, :]  # (time=1, individuals=1, keypoints, space=2)
+    
+    confidence_array = np.ones((1, coords.shape[0], 1))  # (time, keypoints, individuals)
+    confidence_array = confidence_array.transpose(0, 2, 1)  # (time, individuals, keypoints)
+
+    keypoint_names = [str(i) for i in range(coords.shape[0])]
+    individual_names = ["arena"]
+    
+    ds = from_numpy(
+        position_array=position_array.transpose(0, 3, 2, 1),  # to shape (time, space, keypoints, individuals)
+        confidence_array=confidence_array.transpose(0, 2, 1),
+        individual_names=individual_names,
+        keypoint_names=keypoint_names,
+        source_software="manual-json"
+    )
+    
+    ds = ds.assign_coords(view=view_name)
+    views_dss.append(ds)
+
+# Concatenate along 'view' dimension
+views_ds = xr.concat(views_dss, dim="view")
+
+# Optionally slice or set attrs
+views_ds = views_ds.sel(time=0, drop=True)  # since it's static
+views_ds.attrs['source_file'] = 'arena_json'
+views_ds.attrs['fps'] = 1
+# %%
+
+views_ds.info
+# %%
+if "time" not in views_ds.dims:
+    views_ds = views_ds.expand_dims("time")
+arena_3d = mcc_triangulate_ds(views_ds, calib_toml_path)
+
+# %%
+arena_3d.info
+# %%
+import plotly.graph_objects as go
+def plot_3d_arena(arena_ds, skeleton=None, title="3D Arena", show=True):
+    # Extract 3D coordinates
+    coords = arena_ds.position.isel(time=0, individuals=0).transpose('keypoints', 'space').values  # shape: (n_keypoints, 3)
+    keypoint_names = arena_ds.coords["keypoints"].values
+
+    fig = go.Figure()
+
+    # Plot keypoints
+    fig.add_trace(go.Scatter3d(
+        x=coords[:, 0],
+        y=coords[:, 1],
+        z=coords[:, 2],
+        mode='markers+text',
+        marker=dict(size=5, color='blue'),
+        text=keypoint_names,
+        textposition="top center",
+        name='Arena keypoints'
+    ))
+
+    # Optional skeleton lines (e.g., square or arena shape)
+    if skeleton:
+        for start, end in skeleton:
+            i, j = int(start), int(end)  # use indices or convert from names if needed
+            fig.add_trace(go.Scatter3d(
+                x=[coords[i, 0], coords[j, 0]],
+                y=[coords[i, 1], coords[j, 1]],
+                z=[coords[i, 2], coords[j, 2]],
+                mode='lines',
+                line=dict(color='gray', width=2),
+                showlegend=False
+            ))
+
+    fig.update_layout(
+        scene=dict(aspectmode='data'),
+        title=title,
+        margin=dict(l=0, r=0, t=30, b=0)
+    )
+
+    if show:
+        fig.show()
+
+    return fig
+
+skeleton = [(0, 1), (1, 2), (2, 3), (3, 0)]  # e.g., corners of a square
+plot_3d_arena(arena_3d, skeleton=skeleton)
+# %%
+output_path = Path('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data')
+arena_3d.attrs['source_file'] = 'arena_3d'
+arena_3d.attrs['fps'] = 30
+arena_3d.to_netcdf(output_path / "arena_3d.h5")
+
+# %%
+points_path = Path('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012/multicam_video_2024-07-22T10_19_22_cropped_20250325101012_triangulated_points_20250327-124608.h5')
+points = xr.open_dataset(points_path)
+# %%
+points.info
+# %%
+def plot_3d_datasets_together(ds1, ds2, label1="Arena", label2="Pose",
+                               skeleton1=None, skeleton2=None,
+                               time_idx=0, time_idx2=0 ,individual_idx=0):
+    fig = go.Figure()
+
+    # Extract first dataset (e.g., Arena)
+
+    pos1 = ds1.position.isel(time=time_idx, individuals=individual_idx).transpose('keypoints', 'space').values
+    names1 = ds1.coords["keypoints"].values
+
+    fig.add_trace(go.Scatter3d(
+        x=pos1[:, 0], y=pos1[:, 1], z=pos1[:, 2],
+        mode='markers+text',
+        marker=dict(size=5, color='blue'),
+        text=[f"{label1} {name}" for name in names1],
+        name=label1
+    ))
+
+    if skeleton1:
+        for start, end in skeleton1:
+            i, j = int(start), int(end)
+            fig.add_trace(go.Scatter3d(
+                x=[pos1[i, 0], pos1[j, 0]],
+                y=[pos1[i, 1], pos1[j, 1]],
+                z=[pos1[i, 2], pos1[j, 2]],
+                mode='lines',
+                line=dict(color='blue', width=2),
+                showlegend=False
+            ))
+
+    # Extract second dataset (e.g., Pose)
+    pos2 = ds2.position.isel(time=time_idx2, individuals=individual_idx).transpose('keypoints', 'space').values
+    names2 = ds2.coords["keypoints"].values
+
+    fig.add_trace(go.Scatter3d(
+        x=pos2[:, 0], y=pos2[:, 1], z=pos2[:, 2],
+        mode='markers+text',
+        marker=dict(size=5, color='red'),
+        text=[f"{label2} {name}" for name in names2],
+        name=label2
+    ))
+
+    if skeleton2:
+        for start, end in skeleton2:
+            i, j = int(start), int(end)
+            fig.add_trace(go.Scatter3d(
+                x=[pos2[i, 0], pos2[j, 0]],
+                y=[pos2[i, 1], pos2[j, 1]],
+                z=[pos2[i, 2], pos2[j, 2]],
+                mode='lines',
+                line=dict(color='red', width=2),
+                showlegend=False
+            ))
+
+    fig.update_layout(
+        scene=dict(aspectmode='data'),
+        title=f"{label1} + {label2}",
+        margin=dict(l=0, r=0, b=0, t=30),
+        showlegend=True
+    )
+
+    fig.show()
+# %%
+plot_3d_datasets_together(arena_3d, points, label1="Arena", label2="Mouse")
+
+# %%
+from datetime import datetime 
+import re
+from movement.io.load_poses import from_file 
+def create_2d_ds(slp_files_dir: Path):
+    slp_files = list(slp_files_dir.glob("*.slp"))
+    # Windows regex
+    cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
+
+
+
+    #mac regex
+    #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$" 
+
+
+    file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
+    # From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
+    views_list = list(file_path_dict.keys())
+    new_coord_views = xr.DataArray(views_list, dims="view")
+
+    dataset_list = [
+        from_file(f, source_software="SLEAP")
+        for f in file_path_dict.values()
+    ]
+    # make coordinates labels of the keypoints axis all lowercase
+    for ds in dataset_list:
+        ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
+
+
+    # time_slice = slice(0, 1000)
+    ds = xr.concat(dataset_list, dim=new_coord_views)
+
+    bodyparts = list(ds.coords["keypoints"].values)
+
+    print(bodyparts)
+
+    print(ds.position.shape, ds.confidence.shape, bodyparts)
+
+    ds.attrs['fps'] = 'fps'
+    ds.attrs['source_file'] = 'sleap'
+
+    return ds
+def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
+    triang_config = config_kwargs
+    config = dict(triangulation=triang_config)
+
+    calib_fname = str(calib_toml_path)
+    cgroup = CameraGroup.load(calib_fname)
+    # read toml file and use the views to order the dimenensions of the views_ds, so thne you are sure that when you will do the back projeciton thsoe are the same order of the matrices.
+
+    individual_name = views_ds.coords["individuals"][0]
+    reshaped_ds = views_ds.sel(individuals=individual_name).transpose("view", "time", "keypoints", "space")
+    # sort over view axis using the view ordring
+    positions = reshaped_ds.position.values
+    scores = reshaped_ds.confidence.values
+
+    triang_df = triangulate_core(config, 
+                 positions, 
+                 scores, 
+                 views_ds.coords["keypoints"].values, 
+                 cgroup, 
+                 )
+
+    return movement_ds_from_anipose_triangulation_df(triang_df)
+def process_directory(valid_dir, calib_toml_path, triang_config_optim):
+    """ Worker function to process a single directory. """
+    print(valid_dir)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    
+    ds = create_2d_ds(valid_dir)
+    _3d_ds = anipose_triangulate_ds(ds.sel(time=ds.time.values[:1000]), calib_toml_path, **triang_config_optim)
+    
+    _3d_ds.attrs['fps'] = 'fps'
+    _3d_ds.attrs['source_file'] = 'anipose'
+
+    # Save the triangulated points using the directory name
+    save_path = valid_dir / f"{valid_dir.name}_triangulated_points_{timestamp}.h5"
+    _3d_ds.to_netcdf(save_path)
+
+    return save_path  # Returning the path for trackin
+
+
+
+triang_config_optim = {
+"ransac": True,
+"optim": True,
+"optim_chunking": True,
+"optim_chunking_size": 100,
+"score_threshold": 0.7,
+"scale_smooth": 1,
+"scale_length": 3,
+"scale_length_weak": 0.5,
+"n_deriv_smooth": 2,
+"reproj_error_threshold": 150,
+"constraints": [['lear','rear'], ['nose','rear'], ['nose','lear'], ['tailbase', 'upperback'], ['uppermid', 'upperback'], ['upperforward', 'uppermid']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+"constraints_weak": [] #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+}
+expected_views = {'mirror-bottom', 'mirror-left', 'mirror-top', 'central', 'mirror-right'}
+
+dir  = Path('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012')
+
+saved = process_directory(dir, calib_toml_path, triang_config_optim)
+# %%
+
+points_path = '/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012/multicam_video_2024-07-22T10_19_22_cropped_20250325101012_triangulated_points_20250505-173827.h5'
+points = xr.load_dataset(points_path)
+#%%
+plot_3d_datasets_together(arena_3d, points, label1="Arena", label2="Mouse", time_idx2=500)
+# %%
+# calib = read_calibration_toml('/Users/thomasbush/Downloads/calibration_from_mc 1.toml')
+calib_path = '/Users/thomasbush/Downloads/calibration_from_mc 1.toml'
+cgroup = CameraGroup.load(calib_path)
+
+# Ensure time dimension exists
+if "time" not in views_ds.dims:
+    views_ds = views_ds.expand_dims("time")
+
+# Sort views to match calibration order
+view_order = list(cgroup.get_names())
+views_ds = views_ds.sel(view=view_order)
+
+# Extract data
+positions = views_ds.position.sel(individuals=views_ds.individuals[0]).transpose("view", "time", "keypoints", "space").values.copy()
+scores = views_ds.confidence.sel(individuals=views_ds.individuals[0]).transpose("view", "time", "keypoints").values.copy()
+
+# Build config (must contain both 'triangulation' and 'optim' keys)
+config = {
+    "triangulation": {
+        "method": "linear",
+        "optim": False,    # ← this is what it's trying to access
+        "ransac": False    # ← optional
+    },
+    "optim": {}  # ← still required, even if not used
+}
+
+# Call triangulation
+triang_df = triangulate_core(config, positions, scores, views_ds.keypoints.values, cgroup)
+
+# Convert to xarray
+arena_3d_ds = movement_ds_from_anipose_triangulation_df(triang_df)
+
+# %%
+
+output_path = Path('/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data')
+
+# Save the dataset
+arena_3d_ds.attrs['fps'] = 'fps'
+arena_3d_ds.attrs['source_file'] = 'anipose'
+arena_3d_ds.to_netcdf(output_path/ 'newarena.h5')
+
+print(f"Arena saved to: {output_path}")
+# %%

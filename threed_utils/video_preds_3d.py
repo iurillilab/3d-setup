@@ -227,21 +227,21 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--root_dir', type=str, required=True)
-    parser.add_argument('--num_frames', type=int)
+    parser.add_argument('--time_slice', nargs=2, type=int, help='Start and end frame indices', default=None)
+
     args = parser.parse_args()
 
     root = Path(args.root_dir)
     output_dir = '/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/output/plots'
-    num_frames = args.num_frames
+
     ds = create_2d_ds(root)
-    poses3d = load_3d_poses(root)
-
-    print("2D predictions DS:\n", ds.info)
-    print("3D poses info \n", poses3d.info)
-
+    if args.time_slice:
+        start, end = args.time_slice
+        ds = ds.sel(time = slice(start, end))
     video_map = load_video_mapping(root, ds.view.values)
 
-    for frame_idx in range(num_frames):
+
+    for frame_idx in np.arange(start, end):
         print(f"Plotting frame {frame_idx}")
         plot_frame_2d_views_only(ds, video_map, frame_idx, output_dir)
 

@@ -118,9 +118,9 @@ if __name__ == "__main__":
 #             --speed 200 \
 #             --pose_labels  "anipose_optimised extra"
 # python render_poses.py \
-#     --pose_files /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012/multicam_video_2024-07-22T10_19_22_cropped_20250325101012_triangulated_points_20250327-124608.h5 \
+#     --pose_files /Users/thomasbush/Downloads/multicam_video_2024-08-03T11_19_55_cropped_20250325101012/multicam_video_2024-08-03T11_19_55_cropped_20250325101012_triangulated_points_20250401-145955.h5 \
 #     --arena_file /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/newarena.h5 \
 #     --pose_labels "Mouse 1" "Mouse 2" \
-#     --output_dir  /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/plots\
+#     --output_dir  /Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/plots/plots1 \
 #     --exclude_keypoints flimbmid,blimbmid \
-#     --time_slice 0 100
+#     --time_slice 0 300

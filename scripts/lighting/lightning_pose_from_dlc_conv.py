@@ -53,7 +53,7 @@ def export_ds_to_dlc_annotation(
     video_name = video_name.split(".")[0]
     final_name_csv = f"{video_name}_movement.csv"
     final_name_h5 = f"{video_name}_movement.h5"
-    
+
     main_output_folder = Path(main_output_folder)
     output_folder = main_output_folder / video_name
     output_folder.mkdir(parents=True, exist_ok=True)
@@ -72,7 +72,7 @@ def export_ds_to_dlc_annotation(
             for i in range(len(frames_names))
         ]
     )
-    df.to_csv(output_folder / final_name_csv) 
+    df.to_csv(output_folder / final_name_csv)
     df.to_hdf(output_folder / final_name_h5, key="df", mode="w")
 
     (output_folder / test_labels_individual_filename).unlink()
@@ -92,9 +92,9 @@ def extract_keyframes(video_path, dataset, n_frames=20):
     total_frames = min(total_frames, 1000)  # Limit to first 1000 frames
     # keyframe_indices = list(range(0, total_frames, stride))
     keyframe_indices = np.random.randint(0, total_frames, size=n_frames).tolist()
-    
+
     keyframe_imgs = []
-    
+
     for i in keyframe_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, i)
         ret, frame = cap.read()
@@ -109,7 +109,7 @@ def extract_keyframes(video_path, dataset, n_frames=20):
 
     return keyframe_imgs, keyframe_ds, keyframe_indices
 
-# add folder from other script 
+# add folder from other script
 def save_keyframes_to_disk(frames, frame_names, output_dir):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     for frame, frame_name in zip(frames, frame_names):
@@ -122,15 +122,15 @@ def generate_config(scorer, project_path, video_paths, bodyparts):
     """
     # Get current date
     date = datetime.now().strftime("%b%d")
-    
+
     # Create video_sets dict
     video_sets = {}
     for video_path in video_paths:
         video_sets[str(video_path)] = {"crop": "0, 1108, 0, 752"}
-    
+
     # Create skeleton based on bodyparts structure
     skeleton = []
-    
+
     # Group bodyparts by prefix
     grouped_bodyparts = {}
     for bp in bodyparts:
@@ -138,7 +138,7 @@ def generate_config(scorer, project_path, video_paths, bodyparts):
         if prefix not in grouped_bodyparts:
             grouped_bodyparts[prefix] = []
         grouped_bodyparts[prefix].append(bp)
-    
+
     # Create skeleton for each group
     # for prefix, parts in grouped_bodyparts.items():
     #     if len(parts) >= 3:  # Only create skeleton if at least 3 points
@@ -150,7 +150,7 @@ def generate_config(scorer, project_path, video_paths, bodyparts):
     #                 skeleton.append(parts + [parts[0]])
     #             else:
     #                 skeleton.append(parts)
-    
+
     # Create config dictionary
     config = {
         "Task": "mouseface",
@@ -158,47 +158,47 @@ def generate_config(scorer, project_path, video_paths, bodyparts):
         "date": date,
         "multianimalproject": False,
         "identity": None,
-        
+
         "project_path": str(project_path),
-        
+
         "video_sets": video_sets,
         "bodyparts": bodyparts,
-        
+
         "start": 0,
         "stop": 1,
         "numframes2pick": 20,
-        
+
         "skeleton": skeleton,
         "skeleton_color": "black",
         "pcutoff": 0.6,
         "dotsize": 12,
         "alphavalue": 0.7,
         "colormap": "rainbow",
-        
+
         "TrainingFraction": [0.95],
         "iteration": 0,
         "default_net_type": "resnet_50",
         "default_augmenter": "default",
         "snapshotindex": -1,
         "batch_size": 8,
-        
+
         "cropping": False,
         "x1": 0,
         "x2": 640,
         "y1": 277,
         "y2": 624,
-        
+
         "corner2move2": [50, 50],
         "move2corner": True
     }
-    
+
     return config
 
 
 def save_config(config, output_folder: Path):
     """Save the config dictionary as a YAML file with proper formatting"""
     path = output_folder / "config.yaml"
-    
+
     # Convert config to string with proper formatting
     yaml_str = ""
     for key, value in config.items():
@@ -207,7 +207,7 @@ def save_config(config, output_folder: Path):
         else:
             value_str = yaml.dump({key: value}, default_flow_style=False)
             yaml_str += value_str
-    
+
     # Write to file
     path.write_text(yaml_str)
     print(f"Config saved to {path}")
@@ -268,7 +268,7 @@ for video_path, ds_path in zip(tiled_movies, tiled_datasets):
     shutil.copy(video_path, videos_folder / video_path.name)
 
 config = generate_config(
-        scorer="movement", 
+        scorer="movement",
         project_path=target_folder,
         video_paths=tiled_movies,
         bodyparts=ds_stacked.coords["keypoints"].values.tolist()
