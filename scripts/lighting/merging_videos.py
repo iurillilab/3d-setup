@@ -1,4 +1,6 @@
-
+from os import name
+from pandas import wide_to_long
+import yaml
 from movement.io.save_poses import to_dlc_file
 from movement.io.load_poses import from_numpy
 from movement.io.load_poses import from_file
@@ -76,16 +78,62 @@ def buildDictFiles(slp_files_dir: Path) -> tuple[dict, dict]:
 
     return file_path_dict, vid_path_dict
 
+def rotate_pose_array(ds, command, width, height):
+    """
+    Rotate xarray Dataset of 2D poses based on an ffmpeg-style command.
 
-def build2dDS(files_dict:dict, n_frames:int=None)->xr.Dataset:
+    Parameters:
+    - ds: xarray.Dataset with 'position' of shape (time, space, keypoints, individuals)
+    - command: str, one of 'transpose=1', 'vflip,hflip', 'transpose=2'
+    - width, height: original frame dimensions (in pixels)
+
+    Returns:
+    - A new xarray.Dataset with rotated coordinates
+    """
+    pos = ds['position'].copy()
+
+    x = pos.sel(space='x')
+    y = pos.sel(space='y')
+
+    if command == "transpose=1":
+        # 90° clockwise: (x, y) → (height - y, x)
+        new_x = height - y
+        new_y = x
+
+    elif command == "vflip,hflip":
+        # 180°: (x, y) → (width - x, height - y)
+        new_x = width - x
+        new_y = height - y
+
+    elif command == "transpose=2":
+        # 90° counterclockwise: (x, y) → (y, width - x)
+        new_x = y
+        new_y = width - x
+
+    else:
+        raise ValueError(f"Unsupported rotation command: {command}")
+
+    new_position = xr.concat([new_x, new_y], dim='space')
+    new_position = new_position.assign_coords(space=['x', 'y'])
+
+    new_ds = ds.copy()
+    new_ds['position'] = new_position
+
+    return new_ds
+def build2dDS(files_dict:dict, n_frames:int=None, rotate:bool=False, command=None, height=None, width=None)->xr.Dataset:
 
 
     new_coord_views = xr.DataArray(list(files_dict.keys()), dims="view")
+
+    #idx central:
+    idx_c = list(files_dict.keys()).index('central')
 
     dataset_list = [
         from_file(f, source_software="SLEAP")
         for f in files_dict.values()
     ]
+    if rotate:
+        dataset_list[idx_c] = rotate_pose_array(dataset_list[idx_c], command, height, width)
     # make coordinates labels of the keypoints axis all lowercase
     for ds in dataset_list:
         ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
@@ -296,24 +344,40 @@ if __name__ == "__main__":
     for root_dir in tqdm(dirs, desc="Processing directories"):
 
 
-            slp_dict, video_dict = buildDictFiles(Path(root_dir))
+        # get config parms :
+       config_path = root_dir / "transform_config.yaml"
+       if "permutation" in root_dir.name:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        command = config['rotation_command']
+        width = config['widht']
+        height = config['height']
 
 
-            tiled_frames, mapping = tile_videos(
-                video_dict,
-                num_frames=NUM_FRAMES,
-                layout="horizontal",  # or "horizontal"
-                output_path=output_path / f"{root_dir.name}.mp4")
-            print(f"Tiled video saved to {output_path / 'tiled_output.mp4'}")
+
+
+        slp_dict, video_dict = buildDictFiles(Path(root_dir))
+
+
+        tiled_frames, mapping = tile_videos(
+            video_dict,
+            num_frames=NUM_FRAMES,
+            layout="horizontal",  # or "horizontal"
+            output_path=output_path / f"{root_dir.name}.mp4")
+        print(f"Tiled video saved to {output_path / 'tiled_output.mp4'}")
+        if "permutation" in root_dir.name:
+            ds = build2dDS(slp_dict, rotate=True, command=command, height=height, width=width)
+
+        else:
             ds = build2dDS(slp_dict)
 
-            shifted_ds = shift_coordinates(ds, mapping)
-            save_path = output_path / f"predictions_{root_dir.name}.h5"
-            shifted_ds.to_netcdf(save_path)
-            print(f"Saved shifted dataset to {save_path}")
+        shifted_ds = shift_coordinates(ds, mapping)
+        save_path = output_path / f"predictions_{root_dir.name}.h5"
+        shifted_ds.to_netcdf(save_path)
+        print(f"Saved shifted dataset to {save_path}")
 
 
 
-            plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
+        plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
 
 

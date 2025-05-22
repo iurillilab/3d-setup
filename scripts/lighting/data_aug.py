@@ -1,7 +1,7 @@
 import os
 import shutil
 from pathlib import Path
-
+import subprocess
 from xarray.backends.api import to_netcdf
 from xarray.core.common import AttrAccessMixin
 from movement.io.load_poses import from_file
@@ -14,6 +14,7 @@ from tqdm import tqdm
 import re
 import argparse
 from merging_videos import find_dirs_with_matching_views, buildDictFiles
+import yaml
 
 '''Script that given a dir it generates 3subdir with rotate videos tiled
 Step one: generate three sub dir one per permutation
@@ -84,6 +85,11 @@ def get_video_dimensions(video_path):
     cap.release()
     return width, height
 
+def copy_and_rename(src:Path, dst_dir:Path, new_name:str):
+
+    dst_path = dst_dir / new_name
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -117,7 +123,6 @@ if __name__ == "__main__":
     ds_central = from_file(slp_dict["central"], source_software="SLEAP")
 
     vids = list(vid_dict.values())[1:]
-    print(list(vid_dict.keys()).sort())
 
 
 
@@ -125,15 +130,24 @@ if __name__ == "__main__":
         path = dir_path / f"{p}permutation"
         os.makedirs(path, exist_ok=True)
         # rotate and save central view:
+        config = {
+                'rotation_command': commands[p],
+                'permutation_index': p,
+                'widht': W,
+                'height':H
+                }
+        with open(path / 'transform_config.yaml', 'w') as f:
+            yaml.dump(config, f)
         if not os.path.exists(path / vid_dict["central"].name):
             ffmpeg.input(vid_dict['central']).output(str(path / vid_dict["central"].name), vf=commands[p]).run()
         # rotate slp coordinates and save them:
-        if  os.path.exists(path / slp_dict["central"].name):
-            new_ds = rotate_pose_array(ds_central, commands[p], H, W)
-            new_ds.attrs["fps"] = 'fps'
-            new_ds.attrs['source_file'] = 'SLEAP'
-            to_sleap_analysis_file(new_ds, path / slp_dict["central"].name)
-
+        if  not os.path.exists(path / slp_dict["central"].name):
+            shutil.copy2(slp_dict["central"], path / slp_dict["central"].name)
+            # new_ds = rotate_pose_array(ds_central, commands[p], H, W)
+            # new_ds.attrs["fps"] = 'fps'
+            # new_ds.attrs['source_file'] = 'SLEAP'
+            # to_sleap_analysis_file(new_ds, path / slp_dict["central"].name)
+            #
         for view_original, new_view in zip(views, order[p]):
             name = vid_dict[view_original].name
             if not os.path.exists(path / name):
@@ -141,27 +155,7 @@ if __name__ == "__main__":
                 shutil.copy2(vid_to_save, path / name)
 
             slp_name = slp_dict[view_original].name
-            if  os.path.exists(path / slp_name):
-                slp_to_save = from_file(slp_dict[views[new_view]], source_software="SLEAP")
-               # print(f"Reading from {slp_dict[views[new_view]]}, saving to {path / slp_name}")
-                print(f"Mean x-position: {slp_to_save['position'].sel(space='x').mean().item():.2f}")
-                slp_to_save.attrs["fps"] = "FPS"
-                slp_to_save.attrs["source_file"] = "SLEAP"
-                to_sleap_analysis_file(slp_to_save, path / slp_name)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            if  not os.path.exists(path / slp_name):
+                slp_src = slp_dict[views[new_view]]
+                copy_and_rename(slp_src, path, slp_name)
 
