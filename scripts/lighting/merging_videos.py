@@ -1,4 +1,6 @@
-
+from os import name
+from pandas import wide_to_long
+import yaml
 from movement.io.save_poses import to_dlc_file
 from movement.io.load_poses import from_numpy
 from movement.io.load_poses import from_file
@@ -8,7 +10,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import argparse
 import re
-import cv2 
+import cv2
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -20,14 +22,14 @@ def find_dirs_with_matching_views(root_dir: Path) -> list[Path]:
 
     all_candidate_folders = [f for f in root_dir.rglob("multicam_video_*_cropped_*") if f.is_dir()]
     parent_dict = {folder.parent: [] for folder in all_candidate_folders}
-    
+
     for candidate_folder in all_candidate_folders:
         parent_dict[candidate_folder.parent].append(candidate_folder)
-    
+
     last_folders = [sorted(folders)[-1] for folders in parent_dict.values()]
 
 
-    for directory in last_folders:    
+    for directory in last_folders:
         #if not directory.is_dir():
         #    continue
 
@@ -38,12 +40,12 @@ def find_dirs_with_matching_views(root_dir: Path) -> list[Path]:
 
         if  len(list(directory.glob("*triangulated_points_*.h5"))) < 0:
             continue
-        
+
         for h5 in directory.glob("*triangulated_points_*.h5"):
             if not h5.is_file():
                 continue
             valid_dirs.append(h5)
-    valid_dirs.reverse() # to avoid possible error 
+    valid_dirs.reverse() # to avoid possible error
     return valid_dirs
 
 
@@ -64,28 +66,74 @@ def buildDictFiles(slp_files_dir: Path) -> tuple[dict, dict]:
     vid_path_dict = {re.search(vid_regex, str(f.name)).groups()[0]: f for f in vid_files}
 
     #mac regex
-    #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$" 
+    #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$"
 
     file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
     # From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
 
-    #ensure view consistency 
+    #ensure view consistency
     views_list = list(file_path_dict.keys())
     views_list_ = list(vid_path_dict.keys())
     assert views_list.sort() == views_list_.sort(), 'videos and predictions must have the same views'
 
     return file_path_dict, vid_path_dict
 
+def rotate_pose_array(ds, command, width, height):
+    """
+    Rotate xarray Dataset of 2D poses based on an ffmpeg-style command.
 
-def build2dDS(files_dict:dict, n_frames:int=None)->xr.Dataset:
+    Parameters:
+    - ds: xarray.Dataset with 'position' of shape (time, space, keypoints, individuals)
+    - command: str, one of 'transpose=1', 'vflip,hflip', 'transpose=2'
+    - width, height: original frame dimensions (in pixels)
+
+    Returns:
+    - A new xarray.Dataset with rotated coordinates
+    """
+    pos = ds['position'].copy()
+
+    x = pos.sel(space='x')
+    y = pos.sel(space='y')
+
+    if command == "transpose=1":
+        # 90° clockwise: (x, y) → (height - y, x)
+        new_x = height - y
+        new_y = x
+
+    elif command == "vflip,hflip":
+        # 180°: (x, y) → (width - x, height - y)
+        new_x = width - x
+        new_y = height - y
+
+    elif command == "transpose=2":
+        # 90° counterclockwise: (x, y) → (y, width - x)
+        new_x = y
+        new_y = width - x
+
+    else:
+        raise ValueError(f"Unsupported rotation command: {command}")
+
+    new_position = xr.concat([new_x, new_y], dim='space')
+    new_position = new_position.assign_coords(space=['x', 'y'])
+
+    new_ds = ds.copy()
+    new_ds['position'] = new_position
+
+    return new_ds
+def build2dDS(files_dict:dict, n_frames:int=None, rotate:bool=False, command=None, height=None, width=None)->xr.Dataset:
 
 
     new_coord_views = xr.DataArray(list(files_dict.keys()), dims="view")
+
+    #idx central:
+    idx_c = list(files_dict.keys()).index('central')
 
     dataset_list = [
         from_file(f, source_software="SLEAP")
         for f in files_dict.values()
     ]
+    if rotate:
+        dataset_list[idx_c] = rotate_pose_array(dataset_list[idx_c], command, height, width)
     # make coordinates labels of the keypoints axis all lowercase
     for ds in dataset_list:
         ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
@@ -99,7 +147,7 @@ def build2dDS(files_dict:dict, n_frames:int=None)->xr.Dataset:
 
     return ds
 
-    
+
 
 def pad_to_shape(frame, target_shape):
     """Pad frame to target shape (height, width)."""
@@ -114,13 +162,13 @@ def pad_to_shape(frame, target_shape):
 def tile_videos(video_dict, num_frames=None, layout="horizontal", output_path=None):
     """
     Tiles multiple videos into a single video with padding (no resizing).
-    
+
     Args:
         video_dict (dict): {view_name: video_path}
         num_frames (int): Max number of frames (or None to use min across all).
         layout (str): "horizontal", "vertical", or "grid"
         output_path (str or None): Path to save tiled video
-    
+
     Returns:
         tiled_frames (list): List of combined frames
         frame_mapping (dict): {view_name: (x_offset, y_offset, width, height, pad_top)}
@@ -247,7 +295,7 @@ def shift_coordinates(dataset: xr.Dataset, frame_mapping: dict)-> xr.Dataset:
 def plot_keypoints_on_frame(frame, dataset: xr.Dataset, time_index=0, point_size=8):
     """
     Plot keypoints from all views on a single frame.
-    
+
     Args:
         frame (np.array): Image to draw over (H, W, 3)
         dataset (xr.Dataset): Dataset with shifted coordinates
@@ -255,7 +303,7 @@ def plot_keypoints_on_frame(frame, dataset: xr.Dataset, time_index=0, point_size
     """
     plt.figure(figsize=(12, 8))
     plt.imshow(frame)
-    
+
     # Iterate through views
     for i, view in enumerate(dataset.coords["view"].values):
         coords = dataset.position.sel(view=view).isel(time=time_index).values  # shape: (2, keypoints, individuals)
@@ -264,13 +312,13 @@ def plot_keypoints_on_frame(frame, dataset: xr.Dataset, time_index=0, point_size
                 x = coords[0, k, ind]
                 y = coords[1, k, ind]
                 plt.scatter(x, y, s=point_size, label=f"{view}-{k}" if i == 0 and ind == 0 else "", alpha=0.6)
-    
+
     plt.axis("off")
     plt.title(f"Tiled Frame with Overlaid Keypoints at time {time_index}")
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=6)
     plt.tight_layout()
     plt.show()
-
+#TODO Rotate central view and permute laterla view to obtain 4 videos
 
 if __name__ == "__main__":
 
@@ -293,6 +341,8 @@ if __name__ == "__main__":
                  r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240724\112233\multicam_video_2024-07-24T11_37_02_cropped_20250325101012"
                  ]
     dirs = [Path(p) for p in root_dirs]
+    gen_path = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012")
+    dirs = [gen_path / "0permutation", gen_path / "1permutation", gen_path / "2permutation"]
     output_path = Path(args.output_path)
 
 
@@ -300,26 +350,42 @@ if __name__ == "__main__":
     # "D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project"
 
     for root_dir in tqdm(dirs, desc="Processing directories"):
-            
-            
-            slp_dict, video_dict = buildDictFiles(Path(root_dir))
 
 
-            tiled_frames, mapping = tile_videos(
-                video_dict,
-                num_frames=NUM_FRAMES,
-                layout="horizontal",  # or "horizontal"
-                output_path=output_path / f"{root_dir.name}.mp4")
-            print(f"Tiled video saved to {output_path / 'tiled_output.mp4'}")
+        # get config parms :
+       config_path = root_dir / "transform_config.yaml"
+       if "permutation" in root_dir.name:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        command = config['rotation_command']
+        width = config['widht']
+        height = config['height']
+
+
+
+
+        slp_dict, video_dict = buildDictFiles(Path(root_dir))
+
+
+        tiled_frames, mapping = tile_videos(
+            video_dict,
+            num_frames=NUM_FRAMES,
+            layout="horizontal",  # or "horizontal"
+            output_path=output_path / f"{root_dir.name}.mp4")
+        print(f"Tiled video saved to {output_path / 'tiled_output.mp4'}")
+        if "permutation" in root_dir.name:
+            ds = build2dDS(slp_dict, rotate=True, command=command, height=height, width=width)
+
+        else:
             ds = build2dDS(slp_dict)
 
-            shifted_ds = shift_coordinates(ds, mapping)
-            save_path = output_path / f"predictions_{root_dir.name}.h5"
-            shifted_ds.to_netcdf(save_path)
-            print(f"Saved shifted dataset to {save_path}")
+        shifted_ds = shift_coordinates(ds, mapping)
+        save_path = output_path / f"predictions_{root_dir.name}.h5"
+        shifted_ds.to_netcdf(save_path)
+        print(f"Saved shifted dataset to {save_path}")
 
-            
 
-            # plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
+
+        plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
 
 

@@ -166,3 +166,5 @@ cython_debug/
 
 # Except .pkl files in tests/assets
 !tests/assets/*.pkl
+
+.mp4
