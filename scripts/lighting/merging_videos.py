@@ -323,16 +323,24 @@ def plot_keypoints_on_frame(frame, dataset: xr.Dataset, time_index=0, point_size
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Process and tile videos.")
-    parser.add_argument("--num_frames", type=int, default=100, help="Number of frames to process.")
+    parser.add_argument("--num_frames", type=int, default=5000, help="Number of frames to process.")
     parser.add_argument("--output_path", type=str, default="tiled_output.mp4", help="Path to save the tiled video.")
 
 
     args = parser.parse_args()
     NUM_FRAMES = args.num_frames
-    # root_dirs = [r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240722\M1\101552\multicam_video_2024-07-22T10_19_22_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M4\144038\multicam_video_2024-08-05T15_05_00_cropped_20250325101012"]
-    # dirs = [Path(p) for p in root_dirs]
-    # example from personal dirs
+    root_dirs = [r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240722\M1\101552\multicam_video_2024-07-22T10_19_22_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M2\111448\multicam_video_2024-08-01T12_00_10_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M8\163429\multicam_video_2024-08-01T17_06_27_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M4\144038\multicam_video_2024-08-05T15_05_00_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240803\M4\140337\multicam_video_2024-08-03T14_32_11_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M3\124846\multicam_video_2024-08-05T14_40_38_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M2\111721\multicam_video_2024-08-05T11_38_40_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M5\150500\multicam_video_2024-08-05T15_22_07_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M6\153300\multicam_video_2024-08-01T15_59_25_cropped_20250325101012",
+                 r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240724\112233\multicam_video_2024-07-24T11_37_02_cropped_20250325101012"
+                 ]
+    dirs = [Path(p) for p in root_dirs]
     gen_path = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012")
 #    dirs = [gen_path / "0permutation", gen_path / "1permutation", gen_path / "2permutation"]
     dirs = [gen_path]
