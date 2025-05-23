@@ -20,7 +20,9 @@ def stack_keypoints_views(dataset):
     for view in views:
         for keypoint in keypoints:
             combined_label = f"{keypoint}_{view}"
+            combined_label = combined_label.replace("-", "_")
             new_keypoint_labels.append(combined_label)
+    print(new_keypoint_labels)
 
     # Stack position and confidence data using a temporary dimension name
     stacked_pos = dataset.position.stack(combined_keypoints=("view", "keypoints"))
@@ -51,9 +53,11 @@ def export_ds_to_dlc_annotation(
 ):
 
     video_name = video_name.split(".")[0]
-    final_name_csv = f"{video_name}_movement.csv"
-    final_name_h5 = f"{video_name}_movement.h5"
-    
+    #final_name_csv = f"{video_name}_movement.csv"
+    #final_name_h5 = f"{video_name}_movement.h5"
+    final_name_csv = f"CollectedData.csv"
+    final_name_h5 = f"CollectedData.h5"
+
     main_output_folder = Path(main_output_folder)
     output_folder = main_output_folder / video_name
     output_folder.mkdir(parents=True, exist_ok=True)
@@ -68,7 +72,7 @@ def export_ds_to_dlc_annotation(
     # change df index to be multiindex with first level "labeled-data", second level movie_name.split(".")[0], third name frames_names:
     df.index = pd.MultiIndex.from_tuples(
         [
-            ("labeled-data", movie_name.split(".")[0], frames_names[i])
+            ("labeled-data", video_name.split(".")[0], frames_names[i])
             for i in range(len(frames_names))
         ]
     )
@@ -89,7 +93,7 @@ def extract_keyframes(video_path, dataset, n_frames=20):
     """
     cap = cv2.VideoCapture(str(video_path))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    total_frames = min(total_frames, 1000)  # Limit to first 1000 frames
+    # total_frames = min(total_frames, 1000)  # Limit to first 1000 frames
     # keyframe_indices = list(range(0, total_frames, stride))
     keyframe_indices = np.random.randint(0, total_frames, size=n_frames).tolist()
     
@@ -116,6 +120,7 @@ def save_keyframes_to_disk(frames, frame_names, output_dir):
         path = Path(output_dir) / frame_name
         # path = Path(output_dir) / f"{prefix}_{i:06d}.png"
         cv2.imwrite(str(path), frame)
+
 def generate_config(scorer, project_path, video_paths, bodyparts):
     """
     Generate a DeepLabCut config.yaml file with specified parameters
@@ -215,11 +220,12 @@ def save_config(config, output_folder: Path):
 
 ####################
 target_folder = Path(r'D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project\project')
+data_folder = Path(r'D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project')
 
 # create a new folder
 target_folder.mkdir(parents=True, exist_ok=True)
 
-labels_folder = target_folder / "labels"
+labels_folder = target_folder / "labeled-data"
 if labels_folder.exists():
     for file in labels_folder.rglob("*"):
         if file.is_file():
@@ -234,8 +240,10 @@ if videos_folder.exists():
 videos_folder.mkdir(parents=True, exist_ok=True)
 
 
-tiled_movies = [r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project\multicam_video_2024-07-22T10_19_22_cropped_20250325101012.mp4", r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project\multicam_video_2024-08-05T15_05_00_cropped_20250325101012.mp4"]
-tiled_datasets = [r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project\predictions_multicam_video_2024-07-22T10_19_22_cropped_20250325101012.h5",r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project\predictions_multicam_video_2024-08-05T15_05_00_cropped_20250325101012.h5"]
+tiled_movies = [file if file.parent.name == data_folder.name else None for file in data_folder.rglob("*.mp4")]
+tiled_datasets = [file if file.parent.name == data_folder.name else None for file in data_folder.rglob("*.h5")]
+tiled_movies = [file for file in tiled_movies if file is not None]
+tiled_datasets = [file for file in tiled_datasets if file is not None]
 
 for video_path, ds_path in zip(tiled_movies, tiled_datasets):
     video_path = Path(video_path)
