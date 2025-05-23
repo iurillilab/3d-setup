@@ -334,7 +334,8 @@ if __name__ == "__main__":
     # dirs = [Path(p) for p in root_dirs]
     # example from personal dirs
     gen_path = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012")
-    dirs = [gen_path / "0permutation", gen_path / "1permutation", gen_path / "2permutation"]
+#    dirs = [gen_path / "0permutation", gen_path / "1permutation", gen_path / "2permutation"]
+    dirs = [gen_path]
     output_path = Path(args.output_path)
 
 
@@ -342,42 +343,34 @@ if __name__ == "__main__":
     # "D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project"
 
     for root_dir in tqdm(dirs, desc="Processing directories"):
+        root_dir = Path(root_dir)
 
+        slp_dict, video_dict = buildDictFiles(root_dir)
 
-        # get config parms :
-       config_path = root_dir / "transform_config.yaml"
-       if "permutation" in root_dir.name:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        command = config['rotation_command']
-        width = config['widht']
-        height = config['height']
-
-
-
-
-        slp_dict, video_dict = buildDictFiles(Path(root_dir))
-
+        # Only apply rotation if a config exists
+        config_path = root_dir / "transform_config.yaml"
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            command = config['rotation_command']
+            width = config['widht']
+            height = config['height']
+            ds = build2dDS(slp_dict, rotate=True, command=command, height=height, width=width)
+        else:
+            ds = build2dDS(slp_dict)
 
         tiled_frames, mapping = tile_videos(
             video_dict,
             num_frames=NUM_FRAMES,
-            layout="horizontal",  # or "horizontal"
-            output_path=output_path / f"{root_dir.name}.mp4")
-        print(f"Tiled video saved to {output_path / 'tiled_output.mp4'}")
-        if "permutation" in root_dir.name:
-            ds = build2dDS(slp_dict, rotate=True, command=command, height=height, width=width)
-
-        else:
-            ds = build2dDS(slp_dict)
+            layout="horizontal",
+            output_path=output_path / f"{root_dir.name}.mp4"
+        )
+        print(f"Tiled video saved to {output_path / f'{root_dir.name}.mp4'}")
 
         shifted_ds = shift_coordinates(ds, mapping)
         save_path = output_path / f"predictions_{root_dir.name}.h5"
         shifted_ds.to_netcdf(save_path)
         print(f"Saved shifted dataset to {save_path}")
 
-
-
         plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
-
 
