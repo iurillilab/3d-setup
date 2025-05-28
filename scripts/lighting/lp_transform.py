@@ -173,6 +173,9 @@ if __name__ == "__main__":
     # convert the coordinate and save them:
     data_path = lp_dir / "CollectedData.csv"
     df = pd.read_csv(data_path, header=[0, 1, 2])
+    # now we operate on the csv to rotate the central view and permute
+    #the other views
+    #TODO check that it works with the same W, H from original
 
 
 
