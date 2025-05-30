@@ -1,3 +1,4 @@
+from cv2.gapi import video
 import numpy as np
 import pandas as pd
 from movement.io.load_poses import from_file
@@ -158,22 +159,34 @@ if __name__ == "__main__":
 
     lp_dir = Path(args.lp_dir)
     aug_data = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012")
+    permutation_to_view = {
+           "transpose=1":[2, 0, 3, 1],
+           "vflip,hflip": [3, 2, 1, 0],
+           "transpose=2":[1, 3, 0, 2]}
+    H = 624
+    W = 608
+
+
 
     lp_dir = lp_dir / aug_data.name
     idxs = getFramesDir(lp_dir)
+    data_path = lp_dir / "CollectedData.csv"
+    df = pd.read_csv(data_path, header=[0, 1, 2])
+    views_original = ["mirror-bottom", "mirror-left", "mirror-right", "mirror-top"]
+
 
     #extract frames and save them in dir:
     vid_paths = [vid.name for vid in (aug_data / "tiled").iterdir() if ".mp4" in vid.name]
+    for n, (vid_path, (command, t_list)) in enumerate(zip(vid_paths, permutation_to_view.items())):
+        output_dir = aug_data / f"tiled/perm{n}"
+        extractFrames(aug_data / "tiled" / vid_path, idxs, output_dir)
+        new_df = permute_view_values_by_keypoint(df, views_original, t_list)
+        new_df = rotate_central_view(new_df, "central", command, H, W)
+        new_df.to_csv(str(aug_data / f"tiled{n}.csv"))
+        #TODO extract the value H, W form folder.
 
 
-    output_dir = aug_data / "tiled/perm1"
 
-    extractFrames(aug_data / "tiled" / vid_paths[0], idxs, output_dir)
-
-    # convert the coordinate and save them:
-    data_path = lp_dir / "CollectedData.csv"
-    df = pd.read_csv(data_path, header=[0, 1, 2])
-   #TODO check that it works with the same W, H from original
 
 
 

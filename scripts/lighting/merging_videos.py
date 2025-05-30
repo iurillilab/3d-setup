@@ -173,7 +173,8 @@ def tile_videos(video_dict, num_frames=None, layout="horizontal", output_path=No
         first_tiled_frame: the first combined frame (e.g., for preview or plotting)
         frame_mapping: {view_name: (x_offset, y_offset, width, height, pad_top)} for coordinate shifting
     """
-    caps = {view: cv2.VideoCapture(str(path)) for view, path in video_dict.items()}
+    view_list = ["central", "mirror-bottom", "mirror-left", "mirror-right", "mirror-top"]
+    caps = {view: cv2.VideoCapture(str(video_dict[view])) for view in view_list}
     shapes = {}
     pad_tops = {}
 
@@ -185,7 +186,7 @@ def tile_videos(video_dict, num_frames=None, layout="horizontal", output_path=No
         shapes[view] = frame.shape[:2]  # (height, width)
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-    view_list = ["central", "mirror-bottom", "mirror-left", "mirror-right"]
+
     max_height = max(h for h, _ in shapes.values())
     max_width = max(w for _, w in shapes.values())
     frame_counts = [int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) for cap in caps.values()]
