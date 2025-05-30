@@ -159,125 +159,6 @@ def pad_to_shape(frame, target_shape):
     left = (tw - w) // 2
     right = tw - w - left
     return cv2.copyMakeBorder(frame, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0, 0, 0])
-
-# def tile_videos(video_dict, num_frames=None, layout="horizontal", output_path=None):
-#     """
-#     Tiles multiple videos into a single video with padding (no resizing).
-#
-#     Args:
-#         video_dict (dict): {view_name: video_path}
-#         num_frames (int): Max number of frames (or None to use min across all).
-#         layout (str): "horizontal", "vertical", or "grid"
-#         output_path (str or None): Path to save tiled video
-#
-#     Returns:
-#         tiled_frames (list): List of combined frames
-#         frame_mapping (dict): {view_name: (x_offset, y_offset, width, height, pad_top)}
-#     """
-#     caps = {view: cv2.VideoCapture(path) for view, path in video_dict.items()}
-#     first_frames = {}
-#     shapes = {}
-#
-#     # Read first frame to get sizes
-#     for view, cap in caps.items():
-#         ret, frame = cap.read()
-#         if not ret:
-#             raise ValueError(f"Couldn't read from video: {view}")
-#         shapes[view] = frame.shape[:2]  # (height, width)
-#         first_frames[view] = [frame]
-#
-#     # Find max height and width for padding
-#     max_height = max(h for h, w in shapes.values())
-#     max_width = max(w for h, w in shapes.values())
-#
-#     # Determine number of frames
-#     if num_frames is None:
-#         num_frames = int(min(cap.get(cv2.CAP_PROP_FRAME_COUNT) for cap in caps.values()))
-#
-#     # Read remaining frames
-#     for i in range(1, num_frames):
-#         for view, cap in caps.items():
-#             ret, frame = cap.read()
-#             if not ret:
-#                 raise ValueError(f"Video {view} ended early at frame {i}")
-#             first_frames[view].append(frame)
-#
-#     # Pad and store all frames
-#     padded_frames = {view: [] for view in video_dict}
-#     pad_tops = {}
-#
-#     for view, frames in first_frames.items():
-#         h, w = shapes[view]
-#         pad_top = (max_height - h) // 2
-#         pad_tops[view] = pad_top
-#         for frame in frames:
-#             padded = pad_to_shape(frame, (max_height, max_width))
-#             padded_frames[view].append(padded)
-#
-#     # Build tiled frames
-#     tiled_frames = []
-#     frame_mapping = {}
-#     view_list = list(video_dict.keys())
-#
-#     for i in range(num_frames):
-#         current_frames = [padded_frames[view][i] for view in view_list]
-#
-#         if layout == "horizontal":
-#             tiled = np.hstack(current_frames)
-#             x = 0
-#             for view in view_list:
-#                 frame_mapping[view] = (x, 0, max_width, max_height, pad_tops[view])
-#                 x += max_width
-#
-#         elif layout == "vertical":
-#             tiled = np.vstack(current_frames)
-#             y = 0
-#             for view in view_list:
-#                 frame_mapping[view] = (0, y, max_width, max_height, pad_tops[view])
-#                 y += max_height
-#
-#         elif layout == "grid":
-#             rows = int(np.ceil(np.sqrt(len(view_list))))
-#             cols = int(np.ceil(len(view_list) / rows))
-#             blank = np.zeros((max_height, max_width, 3), dtype=np.uint8)
-#
-#             grid = []
-#             idx = 0
-#             for r in range(rows):
-#                 row = []
-#                 for c in range(cols):
-#                     if idx < len(view_list):
-#                         frame = current_frames[idx]
-#                         view = view_list[idx]
-#                         x_offset = c * max_width
-#                         y_offset = r * max_height
-#                         frame_mapping[view] = (x_offset, y_offset, max_width, max_height, pad_tops[view])
-#                         row.append(frame)
-#                         idx += 1
-#                     else:
-#                         row.append(blank)
-#                 grid.append(np.hstack(row))
-#             tiled = np.vstack(grid)
-#
-#         else:
-#             raise ValueError(f"Unsupported layout: {layout}")
-#
-#         tiled_frames.append(tiled)
-#
-#     # Save output if requested
-#     if output_path:
-#         h, w, _ = tiled_frames[0].shape
-#         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-#         out = cv2.VideoWriter(output_path, fourcc, 30, (w, h))
-#         for frame in tiled_frames:
-#             out.write(frame)
-#         out.release()
-#
-#     for cap in caps.values():
-#         cap.release()
-#
-#     return tiled_frames, frame_mapping
-#
 def tile_videos(video_dict, num_frames=None, layout="horizontal", output_path=None):
     """
     Tiles multiple videos into a single video with padding (streamed, not memory-heavy).
@@ -304,7 +185,7 @@ def tile_videos(video_dict, num_frames=None, layout="horizontal", output_path=No
         shapes[view] = frame.shape[:2]  # (height, width)
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-    view_list = list(video_dict.keys())
+    view_list = ["central", "mirror-bottom", "mirror-left", "mirror-right"]
     max_height = max(h for h, _ in shapes.values())
     max_width = max(w for _, w in shapes.values())
     frame_counts = [int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) for cap in caps.values()]

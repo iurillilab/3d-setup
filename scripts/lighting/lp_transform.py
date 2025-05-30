@@ -162,20 +162,18 @@ if __name__ == "__main__":
     lp_dir = lp_dir / aug_data.name
     idxs = getFramesDir(lp_dir)
 
-    # extract frames and save them in dir:
-    # vid_paths = [vid.name for vid in (aug_data / "tiled").iterdir() if ".mp4" in vid.name]
-    #
-    #
-    # output_dir = aug_data / "tiled/perm1"
-    #
-    # extractFrames(aug_data / "tiled" / vid_paths[0], idxs, output_dir)
-    #
+    #extract frames and save them in dir:
+    vid_paths = [vid.name for vid in (aug_data / "tiled").iterdir() if ".mp4" in vid.name]
+
+
+    output_dir = aug_data / "tiled/perm1"
+
+    extractFrames(aug_data / "tiled" / vid_paths[0], idxs, output_dir)
+
     # convert the coordinate and save them:
     data_path = lp_dir / "CollectedData.csv"
     df = pd.read_csv(data_path, header=[0, 1, 2])
-    # now we operate on the csv to rotate the central view and permute
-    #the other views
-    #TODO check that it works with the same W, H from original
+   #TODO check that it works with the same W, H from original
 
 
 
