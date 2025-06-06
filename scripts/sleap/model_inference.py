@@ -88,17 +88,21 @@ def run_inference_parallel(video_paths, model, num_workers=4):
             future.result()  # Ensures errors are caught properly
 
 if __name__ == "__main__":
-    GEN_VIDEO_PATH = r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting"
+    from pathlib import Path
+    GEN_VIDEO_PATH = r"N:\SNeuroBiology_shared\P07_PREY_HUNTING_YE\e01_video_recordings\M29" # r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting"
+    assert Path(GEN_VIDEO_PATH).exists(), f"Path {GEN_VIDEO_PATH} does not exist."
 
     side_model = r"D:\SLEAP_models\SLEAP_side_models\models\250314_091459.single_instance.n=659"
     bottom_model = r"D:\SLEAP_models\SLEAP_bottom_model\models\250116_131653.single_instance.n=416"
+    assert Path(side_model).exists(), f"Side model path {side_model} does not exist."
+    assert Path(bottom_model).exists(), f"Bottom model path {bottom_model} does not exist."
 
     side_paths, bottom_paths = get_video_paths(GEN_VIDEO_PATH)
     print(f"Found {len(side_paths)} side videos and {len(bottom_paths)} bottom videos.")
 
     # Run inference in parallel
     # run_inference_parallel(side_paths, side_model, num_workers=3)
-    # run_inference_parallel(bottom_paths, bottom_model, num_workers=3)
+    run_inference_parallel(bottom_paths, bottom_model, num_workers=1)
     incomplete = check_sleap_files_complete(GEN_VIDEO_PATH)
     if incomplete:
         print("\nWarning: The following directories don't have exactly 5 .slp files:")

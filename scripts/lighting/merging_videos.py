@@ -14,7 +14,7 @@ import re
 import cv2
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-
+import multiprocessing 
 def find_dirs_with_matching_views(root_dir: Path) -> list[Path]:
     """
     Find directories containing exactly 5 SLP files with matching camera views.
@@ -320,44 +320,22 @@ def plot_keypoints_on_frame(frame, dataset: xr.Dataset, time_index=0, point_size
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=6)
     plt.tight_layout()
     plt.show()
-#TODO Rotate central view and permute laterla view to obtain 4 videos
+def process_single_directory(args):
+    root_base, perm, gen_path, output_path, num_frames = args
 
-if __name__ == "__main__":
+    perm_path = gen_path / root_base / perm
+    if not perm_path.exists():
+        print(f"Warning: {perm_path} does not exist, skipping.")
+        return
 
-    parser = argparse.ArgumentParser(description="Process and tile videos.")
-    parser.add_argument("--num_frames", type=int, default=None, help="Number of frames to process.")
-    parser.add_argument("--output_path", type=str, default="tiled_output.mp4", help="Path to save the tiled video.")
+    output_dir = output_path / f"{root_base}_{perm}"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
+    try:
+        slp_dict, video_dict = buildDictFiles(perm_path)
 
-    args = parser.parse_args()
-    NUM_FRAMES = args.num_frames
-    # root_dirs = [r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240722\M1\101552\multicam_video_2024-07-22T10_19_22_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M2\111448\multicam_video_2024-08-01T12_00_10_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M8\163429\multicam_video_2024-08-01T17_06_27_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M4\144038\multicam_video_2024-08-05T15_05_00_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240803\M4\140337\multicam_video_2024-08-03T14_32_11_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M3\124846\multicam_video_2024-08-05T14_40_38_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M2\111721\multicam_video_2024-08-05T11_38_40_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M5\150500\multicam_video_2024-08-05T15_22_07_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M6\153300\multicam_video_2024-08-01T15_59_25_cropped_20250325101012",
-    #              r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240724\112233\multicam_video_2024-07-24T11_37_02_cropped_20250325101012"
-    #              ]
-    # dirs = [Path(p) for p in root_dirs]
-    gen_path = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012")
-    dirs = [gen_path / "0permutation", gen_path / "1permutation", gen_path / "2permutation"]
-    output_path = Path(args.output_path)
-
-
-
-    # "D:\P05_3DRIG_YE-LP\e01_mouse_hunting\lighting_project"
-
-    for root_dir in tqdm(dirs, desc="Processing directories"):
-        root_dir = Path(root_dir)
-
-        slp_dict, video_dict = buildDictFiles(root_dir)
-
-        # Only apply rotation if a config exists
-        config_path = root_dir / "transform_config.yaml"
+        # Check for optional transform config
+        config_path = perm_path / "transform_config.yaml"
         if config_path.exists():
             with open(config_path, 'r') as f:
                 config = yaml.safe_load(f)
@@ -368,18 +346,108 @@ if __name__ == "__main__":
         else:
             ds = build2dDS(slp_dict)
 
+        # Save tiled video
+        tiled_output_path = output_dir / f"{root_base}_{perm}.mp4"
         tiled_frames, mapping = tile_videos(
             video_dict,
-            num_frames=NUM_FRAMES,
+            num_frames=num_frames,
             layout="horizontal",
-            output_path=output_path / f"{root_dir.name}.mp4"
+            output_path=tiled_output_path
         )
-        print(f"Tiled video saved to {output_path / f'{root_dir.name}.mp4'}")
+        print(f"[{root_base}_{perm}] Tiled video saved to {tiled_output_path}")
 
+        # Save predictions
         shifted_ds = shift_coordinates(ds, mapping)
-        save_path = output_path / f"predictions_{root_dir.name}.h5"
-        shifted_ds.to_netcdf(save_path)
-        print(f"Saved shifted dataset to {save_path}")
+        pred_output_path = output_dir / f"predictions_{root_base}_{perm}.h5"
+        shifted_ds.to_netcdf(pred_output_path)
+        print(f"[{root_base}_{perm}] Predictions saved to {pred_output_path}")
 
-        plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
+    except Exception as e:
+        print(f"Error processing {root_base}/{perm}: {e}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Process and tile videos.")
+    parser.add_argument("--num_frames", type=int, default=None, help="Number of frames to process.")
+    parser.add_argument("--output_path", type=str, default="tiled_output", help="Directory to save outputs.")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of parallel workers.")
+    args = parser.parse_args()
+
+    NUM_FRAMES = args.num_frames
+    OUTPUT_PATH = Path(args.output_path)
+    OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
+    GEN_PATH = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\augmented_views")
+    PERMUTATIONS = ["0permutation", "1permutation", "2permutation"]
+
+    task_list = []
+    for root_base in os.listdir(GEN_PATH):
+        if not (GEN_PATH / root_base).is_dir():
+            continue
+        for perm in PERMUTATIONS:
+            task_list.append((root_base, perm, GEN_PATH, OUTPUT_PATH, NUM_FRAMES))
+
+    with multiprocessing.Pool(processes=args.num_workers) as pool:
+        list(tqdm(pool.imap_unordered(process_single_directory, task_list), total=len(task_list), desc="Processing all permutations"))
+
+if __name__ == "__main__":
+
+    main()
+
+    # parser = argparse.ArgumentParser(description="Process and tile videos.")
+    # parser.add_argument("--num_frames", type=int, default=None, help="Number of frames to process.")
+    # parser.add_argument("--output_path", type=str, default="tiled_output", help="Directory to save merged videos and predictions.")
+    # args = parser.parse_args()
+
+    # NUM_FRAMES = args.num_frames
+    # OUTPUT_PATH = Path(args.output_path)
+    # OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
+
+    # gen_path = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\augmented_views")
+    # permutations = ["0permutation", "1permutation", "2permutation"]
+
+    # for root_base in tqdm(os.listdir(gen_path), desc="Processing root dirs"):
+    #     root_base_path = gen_path / root_base
+    #     if not root_base_path.is_dir():
+    #         continue
+
+    #     for perm in permutations:
+    #         perm_path = root_base_path / perm
+    #         if not perm_path.exists():
+    #             print(f"Warning: {perm_path} does not exist, skipping.")
+    #             continue
+
+    #         # Define output directory based on root_base and permutation
+    #         output_dir = OUTPUT_PATH / f"{root_base}_{perm}"
+    #         output_dir.mkdir(parents=True, exist_ok=True)
+
+    #         slp_dict, video_dict = buildDictFiles(perm_path)
+
+    #         # Check for optional transform config
+    #         config_path = perm_path / "transform_config.yaml"
+    #         if config_path.exists():
+    #             with open(config_path, 'r') as f:
+    #                 config = yaml.safe_load(f)
+    #             command = config['rotation_command']
+    #             width = config['widht']
+    #             height = config['height']
+    #             ds = build2dDS(slp_dict, rotate=True, command=command, height=height, width=width)
+    #         else:
+    #             ds = build2dDS(slp_dict)
+
+    #         # Save tiled video
+    #         tiled_output_path = output_dir / f"{root_base}_{perm}.mp4"
+    #         tiled_frames, mapping = tile_videos(
+    #             video_dict,
+    #             num_frames=NUM_FRAMES,
+    #             layout="horizontal",
+    #             output_path=tiled_output_path
+    #         )
+    #         print(f"Tiled video saved to {tiled_output_path}")
+
+    #         # Save predictions
+    #         shifted_ds = shift_coordinates(ds, mapping)
+    #         pred_output_path = output_dir / f"predictions_{root_base}_{perm}.h5"
+    #         shifted_ds.to_netcdf(pred_output_path)
+    #         print(f"Saved shifted dataset to {pred_output_path}")
+
+        # plot_keypoints_on_frame(tiled_frames[0], shifted_ds, time_index=0)
 

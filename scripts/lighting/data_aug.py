@@ -93,17 +93,8 @@ def copy_and_rename(src:Path, dst_dir:Path, new_name:str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dir_path', type=str)
-
-    args = parser.parse_args()
-    dir_path = Path(args.dir_path)
-
-
-    slp_dict, vid_dict = buildDictFiles(dir_path)
-
-    W, H = get_video_dimensions(vid_dict["central"])
-
-    # this is correct permutation given the rotation
+    parser.add_argument('--out_dir', type=str)
+        # this is correct permutation given the rotation
     views = ["mirror-bottom", "mirror-left", "mirror-right", "mirror-top"]
 
     order = {
@@ -120,42 +111,62 @@ if __name__ == "__main__":
             2: "transpose=2"
             }
 
-    ds_central = from_file(slp_dict["central"], source_software="SLEAP")
+    root_dirs = [r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240722\M1\101552\multicam_video_2024-07-22T10_19_22_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M2\111448\multicam_video_2024-08-01T12_00_10_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M8\163429\multicam_video_2024-08-01T17_06_27_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M4\144038\multicam_video_2024-08-05T15_05_00_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240803\M4\140337\multicam_video_2024-08-03T14_32_11_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M3\124846\multicam_video_2024-08-05T14_40_38_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M2\111721\multicam_video_2024-08-05T11_38_40_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240805\M5\150500\multicam_video_2024-08-05T15_22_07_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240801\M6\153300\multicam_video_2024-08-01T15_59_25_cropped_20250325101012",
+                r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240724\112233\multicam_video_2024-07-24T11_37_02_cropped_20250325101012"
+                ]
+    dirs = [Path(p) for p in root_dirs]
 
-    vids = list(vid_dict.values())[1:]
+    args = parser.parse_args()
+    out_dir = Path(args.out_dir)
+
+    for root_dir in tqdm(dirs):
+
+        os.makedirs(out_dir/ root_dir.name, exist_ok=True)
+        dir_path = out_dir / root_dir.name
+        slp_dict, vid_dict = buildDictFiles(root_dir)
+
+        W, H = get_video_dimensions(vid_dict["central"])
+        ds_central = from_file(slp_dict["central"], source_software="SLEAP")
+        vids = list(vid_dict.values())[1:]
+
+        for p in tqdm(range(3)):
+            path = dir_path / f"{p}permutation"
+            os.makedirs(path, exist_ok=True)
+            # rotate and save central view:
+            config = {
+                    'rotation_command': commands[p],
+                    'permutation_index': p,
+                    'widht': W,
+                    'height':H
+                    }
+            with open(path / 'transform_config.yaml', 'w') as f:
+                yaml.dump(config, f)
+            if not os.path.exists(path / vid_dict["central"].name):
+                ffmpeg.input(vid_dict['central']).output(str(path / vid_dict["central"].name), vf=commands[p]).run()
+            # rotate slp coordinates and save them:
+            if  not os.path.exists(path / slp_dict["central"].name):
+                shutil.copy2(slp_dict["central"], path / slp_dict["central"].name)
+
+            for view_original, new_view in zip(views, order[p]):
+                name = vid_dict[view_original].name
+                if not os.path.exists(path / name):
+                    vid_to_save = vid_dict[views[new_view]]
+                    shutil.copy2(vid_to_save, path / name)
+
+                slp_name = slp_dict[view_original].name
+                if  not os.path.exists(path / slp_name):
+                    slp_src = slp_dict[views[new_view]]
+                    copy_and_rename(slp_src, path, slp_name)
 
 
 
-    for p in tqdm(range(3)):
-        path = dir_path / f"{p}permutation"
-        os.makedirs(path, exist_ok=True)
-        # rotate and save central view:
-        config = {
-                'rotation_command': commands[p],
-                'permutation_index': p,
-                'widht': W,
-                'height':H
-                }
-        with open(path / 'transform_config.yaml', 'w') as f:
-            yaml.dump(config, f)
-        if not os.path.exists(path / vid_dict["central"].name):
-            ffmpeg.input(vid_dict['central']).output(str(path / vid_dict["central"].name), vf=commands[p]).run()
-        # rotate slp coordinates and save them:
-        if  not os.path.exists(path / slp_dict["central"].name):
-            shutil.copy2(slp_dict["central"], path / slp_dict["central"].name)
-            # new_ds = rotate_pose_array(ds_central, commands[p], H, W)
-            # new_ds.attrs["fps"] = 'fps'
-            # new_ds.attrs['source_file'] = 'SLEAP'
-            # to_sleap_analysis_file(new_ds, path / slp_dict["central"].name)
-            #
-        for view_original, new_view in zip(views, order[p]):
-            name = vid_dict[view_original].name
-            if not os.path.exists(path / name):
-                vid_to_save = vid_dict[views[new_view]]
-                shutil.copy2(vid_to_save, path / name)
 
-            slp_name = slp_dict[view_original].name
-            if  not os.path.exists(path / slp_name):
-                slp_src = slp_dict[views[new_view]]
-                copy_and_rename(slp_src, path, slp_name)
 
