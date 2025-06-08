@@ -183,8 +183,7 @@ if __name__ == "__main__":
         new_df = permute_view_values_by_keypoint(df, views_original, t_list)
         new_df = rotate_central_view(new_df, "central", command, H, W)
         new_df.to_csv(str(aug_data / f"tiled{n}.csv"))
-        #TODO extract the value H, W form folder.
-
+       #TODO finish to build pipeline, maybe move everything on VM
 
 
 
