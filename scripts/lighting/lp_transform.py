@@ -8,7 +8,8 @@ from pathlib import Path
 import argparse
 import xarray as xr
 import re
-
+from tqdm import tqdm
+import os
 
 
 # extract frames for videos
@@ -153,26 +154,80 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--aug_data", type=str, default=None, required=False)
-    parser.add_argument("--lp_dir", type=str)
 
     args = parser.parse_args()
 
-    lp_dir = Path(args.lp_dir)
-    aug_data = Path("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/multicam_video_2024-07-22T10_19_22_cropped_20250325101012")
+    
+    aug_data = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\tiled_views_lp")
+    lp_dir = Path(r"\\wsl.localhost\Ubuntu\home\sneurobiology\Pose-app\data\dlc10v\labeled-data")
+
+
     permutation_to_view = {
            "transpose=1":[2, 0, 3, 1],
            "vflip,hflip": [3, 2, 1, 0],
            "transpose=2":[1, 3, 0, 2]}
+    perm_keys = list(permutation_to_view.keys())
+
     H = 624
     W = 608
-
-
-
-    lp_dir = lp_dir / aug_data.name
-    idxs = getFramesDir(lp_dir)
-    data_path = lp_dir / "CollectedData.csv"
-    df = pd.read_csv(data_path, header=[0, 1, 2])
     views_original = ["mirror-bottom", "mirror-left", "mirror-right", "mirror-top"]
+
+    dirs_to_process = [Path(f) for f in aug_data.iterdir()]
+
+    for n, dir_to_process in enumerate(tqdm(dirs_to_process, desc="Processing directories")):
+
+        # Strip "_Npermutation" to get original dir name
+        original_name = re.sub(r'_\d+permutation$', '', dir_to_process.name)
+        lighting_ref = lp_dir / original_name
+        if not lighting_ref.exists():
+            print(f"[WARNING] Original directory not found: {lighting_ref}")
+            continue
+
+        # Get frame indices
+        idxs = getFramesDir(lighting_ref)
+
+        # Load pose data
+        data_path = lighting_ref / "CollectedData.csv"
+        if not data_path.exists():
+            print(f"[WARNING] CSV file not found: {data_path}")
+            continue
+
+        df = pd.read_csv(data_path, header=[0, 1, 2])
+
+        # Get corresponding video
+        vid_path = dir_to_process / f"{dir_to_process.name}.mp4"
+        if not vid_path.exists():
+            print(f"[WARNING] Video not found: {vid_path}")
+            continue
+
+        # Prepare output folder
+        output_dir = dir_to_process / "extracted_frames"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Extract frames
+        extractFrames(vid_path, idxs, output_dir)
+
+        # Apply permutation based on round-robin pattern
+        perm_key = perm_keys[n % len(perm_keys)]
+        perm = permutation_to_view[perm_key]
+
+        new_df = permute_view_values_by_keypoint(df.copy(), views_original, perm)
+        new_df = rotate_central_view(new_df, "central", perm_key, H, W)
+
+        # Save
+        new_df.to_csv(dir_to_process / 'CollectedData.csv')
+        new_df.to_hdf(dir_to_process / 'CollectedData.h5', key='df', mode='w')
+
+
+
+
+    
+
+
+
+
+
+
 
 
     #extract frames and save them in dir:
