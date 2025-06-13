@@ -115,8 +115,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Crop all views in AVI files.")
     parser.add_argument("folder",      type=Path, help="Folder containing AVI files.")
     parser.add_argument("json_file",   type=Path, help="JSON with crop params.")
-    parser.add_argument("--reprocess", action="store_true",
-                        help="Force processing even if *_cropped_* exists.")
+    parser.add_argument("--skip_existing", action="store_true",
+                        help="Skip processing if *_cropped_* exists.")
 
     args = parser.parse_args()
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -125,5 +125,5 @@ if __name__ == "__main__":
         folder=args.folder,
         json_file=args.json_file,
         timestamp=timestamp,
-        skip_existing=not args.reprocess,
+        skip_existing=not args.skip_existing,
     )

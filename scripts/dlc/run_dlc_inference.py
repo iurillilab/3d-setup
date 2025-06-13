@@ -32,8 +32,6 @@ import argparse
 from pathlib import Path
 import sys
 
-import deeplabcut as dlc
-
 # -----------------------------------------------------------------------------
 # Argument parsing
 # -----------------------------------------------------------------------------
@@ -54,15 +52,13 @@ parser.add_argument(
     help="Create labeled video output",
 )
 parser.add_argument(
-    "--shuffle-n",
-    dest="shuffle_n",
+    "--shuffle_n",
     type=int,
     default=2,
     help="Shuffle index to use (integer)",
 )
 parser.add_argument(
-    "--batch-size",
-    dest="batch_size",
+    "--batch_size",
     type=int,
     default=1,
     help="Batch size used by DLC during inference",
@@ -73,11 +69,11 @@ args = parser.parse_args()
 # -----------------------------------------------------------------------------
 # Path handling & video list
 # -----------------------------------------------------------------------------
-videos_dir = Path(args.videos_dir).expanduser().resolve()
+videos_dir = Path(args.videos_dir)  # .expanduser().resolve()
 if not videos_dir.is_dir():
     sys.exit(f"[ERROR] Videos directory not found: {videos_dir}")
 
-path_config_file = Path(args.config_file).expanduser().resolve()
+path_config_file = Path(args.config_file) # .expanduser().resolve()
 if not path_config_file.is_file():
     sys.exit(f"[ERROR] config.yaml not found: {path_config_file}")
 
@@ -90,6 +86,8 @@ videofile_path = [str(p) for p in video_paths]
 # -----------------------------------------------------------------------------
 # DLC inference
 # -----------------------------------------------------------------------------
+
+import deeplabcut as dlc
 print("Running analyze_videos on", len(videofile_path), "files …")
 
 dlc.analyze_videos(
