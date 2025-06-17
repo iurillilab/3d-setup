@@ -1,106 +1,129 @@
 import datetime
 import json
-from pathlib import Path
 import os
 import re
 import subprocess
-
 from pathlib import Path
-import numpy as np
+from typing import Set
 
+import numpy as np
 from tqdm import tqdm
+
 from utils import crop_all_views
 
-# change location of models
+# ----------------------------------------------------------------------
+# CONFIG
+# ----------------------------------------------------------------------
+
 MODELS_LOCATIONS = {
-    "side": r"D:\SLEAP_models\SLEAP_side_models\models\250314_091459.single_instance.n=659",
+    "side":   r"D:\SLEAP_models\SLEAP_side_models\models\250314_091459.single_instance.n=659",
     "bottom": r"D:\SLEAP_models\SLEAP_bottom_model\models\250116_131653.single_instance.n=416",
 }
 
 MODELS_MAP_TO_VIEW = {
-    "side": ['mirror-top', 'mirror-bottom', 'mirror-left', 'mirror-right'],
-    "bottom": ["central"]
+    "side":   ["mirror-top", "mirror-bottom", "mirror-left", "mirror-right"],
+    "bottom": ["central"],
 }
-def run_inference(video, model):
+
+# ----------------------------------------------------------------------
+# HELPERS
+# ----------------------------------------------------------------------
+
+
+def run_inference(video: Path, model: Path) -> None:
     """
-    Input: video_paths: list: list of paths to all the videos in the main folder
-    It runs the model inference on the encoded videos and saves the results in a specific folder.
+    Run SLEAP inference on *video* with *model* and store results next to the video.
     """
-    video_path = str(video)
-    output_folder = video_path.replace('.avi.mp4', "predictions.slp")
-    conda_act = 'conda activate sleap'
-    conda_deact = 'conda deactivate'
-    command = f"{conda_act} && sleap-track -m {model} -o {output_folder} {video} && {conda_deact}"
+    out_path = video.with_suffix("").with_suffix(".predictions.slp")
 
-    print(f"Running inference on video: {video}")
-    try:
-        subprocess.run(command, check=True, shell=True, text=True)
-        print(f"Inference results saved to: {output_folder}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error running comman {output_folder}, error: {e}, for video: {video}")
+    # NOTE: avoid spawning a full shell + `conda activate` for every video.
+    # Call the sleap executable directly; ensure the script is launched from
+    # the correct env or set SLEAP_EXE in the OS environment.
+    sleap_exe = os.environ.get("SLEAP_EXE", "sleap-track")
 
-
-def process_videos_in_folder(folder, json_file, timestamp, skip_existing=True):
-    avi_files = list(Path(folder).rglob("*.avi"))
-    # filter out files from previous runs, if in the name there's
-    # central, mirror-top, mirror-bottom, mirror-left, mirror-right:
-    avi_files = [
-        f
-        for f in avi_files
-        if not any(
-            view in f.stem
-            for view in [
-                "central",
-                "mirror-top",
-                "mirror-bottom",
-                "mirror-left",
-                "mirror-right",
-            ]
-        )
+    cmd = [
+        sleap_exe,
+        "-m", str(model),
+        "-o", str(out_path),
+        str(video)
     ]
+    try:
+        subprocess.run(cmd, check=True, text=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] SLEAP failed on {video} → {e}")
 
-    for avi_file in tqdm(avi_files):
-        existing_cropped_dirs = list(avi_file.parent.glob(f"*_cropped_*"))
-        if len(existing_cropped_dirs) > 0 and skip_existing:
-            print(f"Skipping {avi_file} as it has already been processed")
+
+def _cached_cropped_stems(folder: Path) -> Set[str]:
+    """
+    Return the *stems* of already-cropped videos once, so we don't re-walk SMB dirs.
+    """
+    pattern = re.compile(r"^(?P<stem>.+)_cropped_")
+    stems = set()
+    for p in folder.rglob("*_cropped_*"):
+        m = pattern.match(p.name)
+        if m:
+            stems.add(m.group("stem"))
+    return stems
+
+
+def process_videos_in_folder(folder: Path,
+                             json_file: Path,
+                             timestamp: str,
+                             skip_existing: bool = True) -> None:
+    """
+    Find all AVI videos in *folder*, crop each view, optionally run inference.
+    Skips files that already have a matching *_cropped_* sibling when
+    *skip_existing* is True.
+    """
+    # deterministic order → easier to compare timings
+    avi_files = sorted(folder.rglob("*.avi"))
+
+    # ignore already-split views (mirror-*, central, …)
+    EXCLUDE = {"central", "mirror-top", "mirror-bottom", "mirror-left", "mirror-right"}
+    avi_files = [f for f in avi_files if not any(tag in f.stem for tag in EXCLUDE)]
+
+    # prime the cache once – avoids O(N²) directory walks over SMB
+    done_stems = _cached_cropped_stems(folder) if skip_existing else set()
+
+    for avi_file in tqdm(avi_files, desc="cropping"):
+        if skip_existing and avi_file.stem in done_stems:
             continue
-        output_dir = avi_file.parent / f"{avi_file.stem}_cropped_{timestamp}"
-        cropped_filenames = crop_all_views(avi_file, output_dir, json_file, verbose=False)
-        print(cropped_filenames, '\n', type(cropped_filenames))
-        cropped_filenames = [f.result() for f in cropped_filenames]
 
-        # # TODO process cropped videos usin run_inference:
+        out_dir = avi_file.parent / f"{avi_file.stem}_cropped_{timestamp}"
+        cropped_files = crop_all_views(avi_file, out_dir, json_file, verbose=False)
+        cropped_files = [f.result() for f in cropped_files]
+
+        done_stems.add(avi_file.stem)          # keep the cache up-to-date
+
+        # ------------------------------------------------------------------
+        # OPTIONAL: run SLEAP inference on freshly cropped clips
+        # ------------------------------------------------------------------
         # for model_name, views in MODELS_MAP_TO_VIEW.items():
-        #     videos_to_process = [video_path for video_path in cropped_filenames if any([view in video_path.name for view in views])]
-        #     for video_path in videos_to_process:
-        #         run_inference(video_path, MODELS_LOCATIONS[model_name])
-        
-
-        
-        
+        #     videos = [vf for vf in cropped_files
+        #               if any(view in vf.name for view in views)]
+        #     for vf in videos:
+        #         run_inference(vf, MODELS_LOCATIONS[model_name])
 
 
+# ----------------------------------------------------------------------
+# CLI
+# ----------------------------------------------------------------------
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Process AVI files with cropping parameters"
-    )
-    parser.add_argument(
-        "folder", type=str, help="Folder containing AVI files to process"
-    )
-    parser.add_argument(
-        "json_file", type=str, help="JSON file with cropping parameters"
-    )
-    parser.add_argument(
-        "--skip_existing",
-        action="store_false",
-        help="Process all files, including ones that have been processed before",
-        dest="skip_existing",
-        default=False,
-    )
+    parser = argparse.ArgumentParser(description="Crop all views in AVI files.")
+    parser.add_argument("folder",      type=Path, help="Folder containing AVI files.")
+    parser.add_argument("json_file",   type=Path, help="JSON with crop params.")
+    parser.add_argument("--skip_existing", action="store_true",
+                        help="Skip processing if *_cropped_* exists.")
 
     args = parser.parse_args()
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    process_videos_in_folder(Path(args.folder), Path(args.json_file), timestamp, skip_existing=args.skip_existing)
+
+    process_videos_in_folder(
+        folder=args.folder,
+        json_file=args.json_file,
+        timestamp=timestamp,
+        skip_existing=not args.skip_existing,
+    )
