@@ -103,6 +103,7 @@ def apply_transformations(
 
     ffmpeg_command = [
         "ffmpeg",
+        "-copyts", "-vsync", "0",
         "-i",
         str(input_file),  # Input file
         "-vf",
