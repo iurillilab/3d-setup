@@ -249,6 +249,45 @@ print(f"Videos missing entities: {(tracking_report['missing_entities'].apply(len
 tracking_report
 
 # %%
+# First, analyze tracking coverage for original videos
+print("="*60)
+print("TRACKING COVERAGE ANALYSIS")
+print("="*60)
+
+# Find all possible mouse x day combinations from cropped files that have tracking
+tracking_combinations = set(zip(tracking_report["mouse"], tracking_report["day"]))
+cropped_combinations = set(zip(all_cropped_files_df["mouse"], all_cropped_files_df["day"]))
+
+# Find combinations that have cropped videos but no tracking data
+missing_tracking_combinations = cropped_combinations - tracking_combinations
+print(f"Mouse x day combinations with cropped videos: {len(cropped_combinations)}")
+print(f"Mouse x day combinations with tracking data: {len(tracking_combinations)}")
+print(f"Mouse x day combinations missing tracking: {len(missing_tracking_combinations)}")
+
+if missing_tracking_combinations:
+    print(f"\nCombinations with cropped videos but no tracking data:")
+    for mouse, day in sorted(missing_tracking_combinations):
+        # Get sessions available for this combination
+        combo_sessions = all_cropped_files_df[
+            (all_cropped_files_df["mouse"] == mouse) & 
+            (all_cropped_files_df["day"] == day)
+        ]["session"].unique()
+        print(f"  {mouse} - {day}: sessions {list(combo_sessions)}")
+
+# Show detailed breakdown of tracking issues
+incomplete_tracking = tracking_report[~tracking_report["has_valid_single_crop"]]
+if len(incomplete_tracking) > 0:
+    print(f"\nOriginal videos with incomplete tracking ({len(incomplete_tracking)}):")
+    for _, row in incomplete_tracking.iterrows():
+        missing_entities_str = ', '.join(row['missing_entities']) if row['missing_entities'] else 'none'
+        can_pool = "Yes" if row['can_pool_crops'] else "No"
+        print(f"  {row['mouse']} - {row['day']}: missing entities [{missing_entities_str}], can pool: {can_pool}, has loadable crop: {row['has_loadable_crop']}")
+
+print(f"\n")
+print("="*60)
+print("SESSION COVERAGE ANALYSIS")
+print("="*60)
+
 # Check session coverage for each mouse x day combination
 # Each combination should have:
 # 1. At least 1 "object" session
