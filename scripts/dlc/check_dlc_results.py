@@ -1,4 +1,5 @@
 # %%
+# Calling this scripts requires beforehand having run the check_video_integrity.py script!
 from pathlib import Path
 import pandas as pd
 import time
@@ -81,7 +82,7 @@ def get_all_info_from_fpath(fpath: Path):
         "has_cropped": len(cropped_video_fpaths),
         "has_original": len(original_video_fpaths),
         "entity": get_entity_from_modelname(parsed_info["model_name"]),
-        "session": get_session_from_path(fpath),
+        "session": get_entity_from_modelname(str(fpath.parent)),
     }
     parsed_info.update(updates_dict)
     return parsed_info
@@ -94,18 +95,12 @@ all_dlc_files_df.head()
 
 all_dlc_files_df["full_model_id"] = all_dlc_files_df.apply(lambda x: f"{x['model_name']}_{x['shuffle']}_{x['snapshot']}", axis=1)
 all_dlc_files_df.full_model_id.unique()
-# %%
 all_cropped_files_df = pd.read_csv("/Users/vigji/code/3d-setup/video_integrity_report.csv")
 all_cropped_files_df["original_video_fpath"] = all_cropped_files_df["original"].apply(lambda x: Path(x))
 all_cropped_files_df["cropped_video_fpath"] = all_cropped_files_df["cropped_file"].apply(lambda x: Path(x))
-# %%
+
 assert all_dlc_files_df["original_video_fpath"].isin(all_cropped_files_df["original_video_fpath"]).all()
 
-# %%
-all_dlc_files_df["original_video_fpath"][0]
-# %%
-all_cropped_files_df["original_video_fpath"].unique()
-# %%
 
 def generate_tracking_report(all_cropped_files_df: pd.DataFrame, all_dlc_files_df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -189,8 +184,10 @@ def generate_tracking_report(all_cropped_files_df: pd.DataFrame, all_dlc_files_d
                 'original_video_fpath': original_video,
                 'has_valid_single_crop': True,
                 'valid_single_crop_name': valid_single_crop.name if hasattr(valid_single_crop, 'name') else str(valid_single_crop),
+                'valid_single_crop_path': valid_single_crop,
                 'can_pool_crops': None,
                 'pooling_crops': None,
+                'pooling_crop_paths': None,
                 'missing_entities': set(),  # No missing entities if single crop works
                 'has_loadable_crop': has_loadable_crop,
                 'mouse': mouse_id,
@@ -221,13 +218,18 @@ def generate_tracking_report(all_cropped_files_df: pd.DataFrame, all_dlc_files_d
                 pooling_set.add(session_crops[0])
                 pooling_set.add(mouse_crops[0])
                 pooling_crops = tuple(crop.name if hasattr(crop, 'name') else str(crop) for crop in pooling_set)
+                pooling_crop_paths = list(pooling_set)
+            else:
+                pooling_crop_paths = None
         
         report_data.append({
             'original_video_fpath': original_video,
             'has_valid_single_crop': False,
             'valid_single_crop_name': None,
+            'valid_single_crop_path': None,
             'can_pool_crops': can_pool,
             'pooling_crops': pooling_crops,
+            'pooling_crop_paths': pooling_crop_paths,
             'missing_entities': missing_entities,
             'has_loadable_crop': has_loadable_crop,
             'mouse': mouse_id,
@@ -356,4 +358,56 @@ all_cropped_files_df.columns
 # M31: has 3 sessions for 20250510
 # M30: has 3 sessions for day 13
 # M30: has one missing session, object, for day 9
+# %%
+
+# Extract and save all valid crop paths
+print("="*60)
+print("SAVING VALID CROP PATHS")
+print("="*60)
+
+valid_crop_paths = set()
+
+# Get crops with valid single tracking (both session entity and mouse)
+valid_single_crops = tracking_report[tracking_report['has_valid_single_crop'] == True]
+for _, row in valid_single_crops.iterrows():
+    if row['valid_single_crop_path'] is not None:
+        valid_crop_paths.add(str(row['valid_single_crop_path']))
+
+# Get crops that can be pooled for complete tracking
+# pooling_crops = tracking_report[tracking_report['can_pool_crops'] == True]
+# for _, row in pooling_crops.iterrows():
+#     if row['pooling_crop_paths'] is not None:
+#         for crop_path in row['pooling_crop_paths']:
+#             valid_crop_paths.add(str(crop_path))
+
+# Convert to sorted list for consistent output
+valid_crop_paths_list = sorted(list(valid_crop_paths))
+
+# Save to text file
+output_file = Path(root_path / "valid_crops_with_full_tracking.txt")
+with open(output_file, 'w') as f:
+    for crop_path in valid_crop_paths_list:
+        f.write(f"{crop_path}\n")
+
+print(f"Saved {len(valid_crop_paths_list)} valid crop paths to {output_file}")
+print(f"Valid single crops: {len(valid_single_crops)}")
+print(f"Crops that can use pooling: {len(pooling_crops)}")
+print(f"Total unique crop paths with full tracking: {len(valid_crop_paths_list)}")
+
+# Also save summary statistics
+summary_file = Path(root_path / "tracking_summary.txt")
+with open(summary_file, 'w') as f:
+    f.write("TRACKING SUMMARY REPORT\n")
+    f.write("="*50 + "\n\n")
+    f.write(f"Total original videos analyzed: {len(tracking_report)}\n")
+    f.write(f"Videos with valid single crop: {tracking_report['has_valid_single_crop'].sum()}\n")
+    f.write(f"Videos that can use pooling: {tracking_report['can_pool_crops'].sum()}\n")
+    f.write(f"Videos with no tracking solution: {len(tracking_report) - tracking_report['has_valid_single_crop'].sum() - tracking_report['can_pool_crops'].sum()}\n")
+    f.write(f"Videos with loadable crops: {tracking_report['has_loadable_crop'].sum()}\n")
+    f.write(f"Videos missing entities: {(tracking_report['missing_entities'].apply(len) > 0).sum()}\n\n")
+    f.write(f"Total unique crop paths with full tracking data: {len(valid_crop_paths_list)}\n")
+
+print(f"Also saved summary statistics to {summary_file}")
+
+
 # %%

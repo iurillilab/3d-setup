@@ -168,3 +168,6 @@ cython_debug/
 !tests/assets/*.pkl
 
 .mp4
+
+.csv
+*.csv
