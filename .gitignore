@@ -171,3 +171,7 @@ cython_debug/
 
 .csv
 *.csv
+
+# wandb
+wandb/
+iframe_figures/
