@@ -106,16 +106,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Crop all views in AVI files.")
     parser.add_argument("folder",      type=Path, help="Folder containing AVI files.")
-    parser.add_argument("json_file",   type=Path, help="JSON with crop params.")
+    parser.add_argument("--json_file", type=Path, help="JSON with crop params. Defaults to crop_params.json in folder", default=None)
     parser.add_argument("--skip_existing", action="store_true",
                         help="Skip processing if *_cropped_* exists.")
 
     args = parser.parse_args()
+
+    if not args.json_file:
+        args.json_file = Path(args.folder) / "cropping_params.json" # TODO: make this a default
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
     process_videos_in_folder(
         folder=args.folder,
         json_file=args.json_file,
         timestamp=timestamp,
-        skip_existing=not args.skip_existing,
+        skip_existing=args.skip_existing,
     )

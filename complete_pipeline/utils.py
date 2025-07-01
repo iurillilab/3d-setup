@@ -7,7 +7,6 @@ from pathlib import Path
 import cv2
 import napari
 import numpy as np
-import toml
 
 
 def crop_all_views(
@@ -46,6 +45,10 @@ def crop_all_views(
         cropping_specs = cropping_specs[:-1]
 
     output_dir.mkdir(exist_ok=True)
+
+    # minor ugly hack, replaceable in the future, to sanitize the suffix from .avi extension
+    for spec in cropping_specs:
+        spec["output_file_suffix"] = spec["output_file_suffix"].replace(".avi", "")
 
     # Use ThreadPoolExecutor to run the tasks in parallel
     tnow = datetime.datetime.now()

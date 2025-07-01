@@ -1,5 +1,4 @@
-
- #!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Compare the frame-count of every cropped multicam video with its
 parent (original) video.
@@ -22,19 +21,15 @@ The script:
 
 Usage
 -----
-python check_frames_norecurse.py /path/to/cricket/133050
+python 0c_opt_check_video_integrity.py /path/to/folder [options]
 """
 
-
+import argparse
 from pathlib import Path
 import re
 import cv2
 from pprint import pprint
 import pandas as pd
-
-CROPPED_FILE_RE = re.compile(
-    r"multicam_video_(\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2})_[A-Za-z0-9]+\.avi\.mp4$"
-)
 
 
 def count_frames(video: Path) -> int:
@@ -46,11 +41,9 @@ def count_frames(video: Path) -> int:
     return n
 
 
-def check_once() -> None:
-    # root = Path("/Volumes/SystemsNeuroBiology/SNeuroBiology_shared/P07_PREY_HUNTING_YE/e01_video_recordings")
-    root = Path("/Volumes/SNeurobiology_RAW/nas_mirror")
+def check_once(root: Path, match_string: str, save_report: bool) -> None:
     print(root)
-    all_cropped = sorted(list(root.glob("M*/*/*/*/multicam_video_2025-*-*_cropped_*/multicam_video_*_central.avi.mp4")))
+    all_cropped = sorted(list(root.glob(match_string)))
 
     parsing_results_dict_list = []
     all_ids = []
@@ -61,11 +54,17 @@ def check_once() -> None:
         unique_id = mouse + "_" + day + "_" + session
         all_ids.append(unique_id)
         loadable = False
+        original = None
+        n_orig = None
+        n_crop = None
+        status = None
+        
         try:
             try:
                 original = next(cropped_file.parent.parent.glob(f"multicam_video_*.avi"))
             except StopIteration:
                 print(f"MISSING_ORIGINAL\t{cropped_file}")
+                status = "MISSING_ORIGINAL"
                 continue
             n_orig = count_frames(original)
             n_crop = count_frames(cropped_file)
@@ -74,6 +73,7 @@ def check_once() -> None:
             loadable = True
         except Exception as e:
             print(f"ERROR\t{e}")
+            status = "ERROR"
 
         result_dict = {
             "unique_id": unique_id,
@@ -89,8 +89,10 @@ def check_once() -> None:
         }
         parsing_results_dict_list.append(result_dict)
 
-    df = pd.DataFrame(parsing_results_dict_list)
-    df.to_csv("video_integrity_report.csv", index=False)
+    if save_report:
+        df = pd.DataFrame(parsing_results_dict_list)
+        df.to_csv("video_integrity_report.csv", index=False)
+        print(f"Report saved to video_integrity_report.csv")
 
     
     all_ids = sorted(list(set(all_ids)))
@@ -100,5 +102,20 @@ def check_once() -> None:
 
 
 if __name__ == "__main__":
-    check_once()
+    parser = argparse.ArgumentParser(description="Check video integrity by comparing frame counts between original and cropped videos.")
+    
+    parser.add_argument("folder", type=Path, help="Root folder containing video files")
+    parser.add_argument("--config", type=Path, help="Optional config JSON file", default=None)
+    parser.add_argument("--save-report", action="store_true", help="Save integrity report to CSV file")
+    parser.add_argument("--match-string", type=str, 
+                        default="M*/*/*/*/multicam_video_2025-*-*_cropped*/multicam_video_*_central.avi.mp4",
+                        help="Glob pattern to match cropped video files")
+    
+    args = parser.parse_args()
+    
+    check_once(
+        root=args.folder,
+        match_string=args.match_string,
+        save_report=args.save_report,
+    )
 

@@ -202,7 +202,7 @@ def main(input_file):
         cropping_specs.append(
             {
                 "transform": rect_name,
-                "output_file_suffix": f"{rect_name}.avi",  # try to substitue .mp4
+                "output_file_suffix": f"{rect_name}",  # try to substitue .mp4
                 "filters": filters,
                 "ffmpeg_args": ffmpeg_args,
             }
