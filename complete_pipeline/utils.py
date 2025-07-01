@@ -85,6 +85,7 @@ def apply_transformations(
     verbose=True,
 ):
     """Apply transformations to a video file using FFmpeg.
+    Recently fixed to 1) remove extension from output file name, 2) avoid issue with changing frames numbers.
 
     Parameters
     ----------
@@ -230,18 +231,7 @@ def annotate_cropping_windows(frame):
             (corner_se[0] + padding_left_right, corner_se[1] + width_padding_tb),
             (corner_sw[0] + padding_left_right, corner_sw[1] - width_padding_tb),
         ],
-        # "mirror-top": [
-        #     (
-        #         corner_nw[0] - def_side - padding_left_right,
-        #         corner_nw[1] - width_padding_tb,
-        #     ),
-        #     (
-        #         corner_ne[0] - def_side + padding_left_right,
-        #         corner_ne[1] - width_padding_tb,
-        #     ),
-        #     (corner_ne[0] + padding_left_right, corner_ne[1] + width_padding_tb),
-        #     (corner_nw[0] - padding_left_right, corner_nw[1] + width_padding_tb),
-        # ],
+
         "mirror-top": [
             (
                 0,
@@ -254,18 +244,7 @@ def annotate_cropping_windows(frame):
             (def_side + width_padding_tb, corner_ne[1] + width_padding_tb),
             (def_side + width_padding_tb, corner_nw[1] - width_padding_tb),
         ],
-        # "mirror-bottom": [
-        #     (corner_sw[0] - padding_left_right, corner_sw[1] - width_padding_tb),
-        #     (corner_se[0] - padding_left_right, corner_se[1] + width_padding_tb),
-        #     (
-        #         corner_se[0] + def_side + padding_left_right,
-        #         corner_se[1] + width_padding_tb,
-        #     ),
-        #     (
-        #         corner_sw[0] + def_side + padding_left_right,
-        #         corner_sw[1] - width_padding_tb,
-        #     ),
-        # ],
+
          "mirror-bottom": [
             (img_height - def_side, corner_sw[1] - width_padding_tb),
             (img_height - def_side, corner_se[1] + width_padding_tb),

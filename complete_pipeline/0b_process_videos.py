@@ -72,9 +72,10 @@ def process_videos_in_folder(folder: Path,
                              skip_existing: bool = True) -> None:
     """
     Find all AVI videos in *folder*, crop each view, optionally run inference.
-    Skips files that already have a matching *_cropped_* sibling when
+    Skips files that already have a matching *_cropped-vX_* sibling when
     *skip_existing* is True.
     """
+    crop_header_string = "cropped-v2"
     # deterministic order → easier to compare timings
     avi_files = sorted(folder.rglob("*.avi"))
 
@@ -89,20 +90,11 @@ def process_videos_in_folder(folder: Path,
         if skip_existing and avi_file.stem in done_stems:
             continue
 
-        out_dir = avi_file.parent / f"{avi_file.stem}_cropped_{timestamp}"
+        out_dir = avi_file.parent / f"{avi_file.stem}_{crop_header_string}_{timestamp}"
         cropped_files = crop_all_views(avi_file, out_dir, json_file, verbose=False)
         cropped_files = [f.result() for f in cropped_files]
 
         done_stems.add(avi_file.stem)          # keep the cache up-to-date
-
-        # ------------------------------------------------------------------
-        # OPTIONAL: run SLEAP inference on freshly cropped clips
-        # ------------------------------------------------------------------
-        # for model_name, views in MODELS_MAP_TO_VIEW.items():
-        #     videos = [vf for vf in cropped_files
-        #               if any(view in vf.name for view in views)]
-        #     for vf in videos:
-        #         run_inference(vf, MODELS_LOCATIONS[model_name])
 
 
 # ----------------------------------------------------------------------
