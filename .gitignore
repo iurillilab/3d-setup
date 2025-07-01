@@ -172,6 +172,8 @@ cython_debug/
 .csv
 *.csv
 
+.mp4
+
 # wandb
 wandb/
 iframe_figures/
