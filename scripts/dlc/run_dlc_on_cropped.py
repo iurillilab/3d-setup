@@ -60,12 +60,12 @@ def get_model_config() -> Dict[str, Dict]:
             "path_patterns": ["central"],
             "exclusion_patterns": []
         },
-        "mouse-side": {
-            "config_path": models_path / "mouse-side-vigji-2025-07-01" / "config.yaml",
-            #"shuffle": 2,
-            "path_patterns": ["mirror"],
-            "exclusion_patterns": []
-        }
+        # "mouse-side": {
+        #     "config_path": models_path / "mouse-side-vigji-2025-07-01" / "config.yaml",
+        #     #"shuffle": 2,
+        #     "path_patterns": ["mirror"],
+        #     "exclusion_patterns": []
+        # }
     }
     
     # Validate that all config files exist and update their project_path
@@ -260,15 +260,16 @@ if __name__ == "__main__":
     models_to_retrace = []  # e.g., ["cricket"]
     
     # Set dryrun mode
-    dryrun_mode = False
+    dryrun_mode = True
     
     # Get videos to process - this logic should be made configurable
     # For now, using the original pattern as an example
-    video_pattern = "*.mp4" # "M*/*/*/*/*/*central*.mp4"
+    video_pattern = "M29/*/*/*/*v2*/*.mp4" # "M*/*/*/*/*/*central*.mp4"
     
     # You'll need to define the base path - this should be made configurable
     # base_path = Path("/your/data/path")  # Uncomment and set appropriate path
-    base_path = Path("/Users/vigji/Desktop/videos_test/test-cricket-roach-object")
+    # base_path = Path("/Users/vigji/Desktop/videos_test/test-cricket-roach-object")
+    base_path = root_data_path / "nas_mirror" 
     all_videos = sorted(list(base_path.glob(video_pattern)))
     
     # Example of how to use the functions:
@@ -278,5 +279,3 @@ if __name__ == "__main__":
         dryrun=dryrun_mode
     )
     
-    print("Please configure the base path and video pattern before running.")
-    print("Then uncomment the relevant lines in the __main__ section.")
