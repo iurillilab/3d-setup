@@ -260,7 +260,7 @@ if __name__ == "__main__":
     models_to_retrace = []  # e.g., ["cricket"]
     
     # Set dryrun mode
-    dryrun_mode = True
+    dryrun_mode = False
     
     # Get videos to process - this logic should be made configurable
     # For now, using the original pattern as an example
