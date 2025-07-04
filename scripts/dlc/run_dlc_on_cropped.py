@@ -264,7 +264,7 @@ if __name__ == "__main__":
     
     # Get videos to process - this logic should be made configurable
     # For now, using the original pattern as an example
-    video_pattern = "M29/*/*/*/*v2*/*.mp4" # "M*/*/*/*/*/*central*.mp4"
+    video_pattern = "M30/*/*/*/*v2*/*.mp4" # "M*/*/*/*/*/*central*.mp4"
     
     # You'll need to define the base path - this should be made configurable
     # base_path = Path("/your/data/path")  # Uncomment and set appropriate path
