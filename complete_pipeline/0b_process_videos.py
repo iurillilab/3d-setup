@@ -11,47 +11,6 @@ from tqdm import tqdm
 
 from utils import crop_all_views
 
-# ----------------------------------------------------------------------
-# CONFIG
-# ----------------------------------------------------------------------
-
-MODELS_LOCATIONS = {
-    "side":   r"D:\SLEAP_models\SLEAP_side_models\models\250314_091459.single_instance.n=659",
-    "bottom": r"D:\SLEAP_models\SLEAP_bottom_model\models\250116_131653.single_instance.n=416",
-}
-
-MODELS_MAP_TO_VIEW = {
-    "side":   ["mirror-top", "mirror-bottom", "mirror-left", "mirror-right"],
-    "bottom": ["central"],
-}
-
-# ----------------------------------------------------------------------
-# HELPERS
-# ----------------------------------------------------------------------
-
-
-def run_inference(video: Path, model: Path) -> None:
-    """
-    Run SLEAP inference on *video* with *model* and store results next to the video.
-    """
-    out_path = video.with_suffix("").with_suffix(".predictions.slp")
-
-    # NOTE: avoid spawning a full shell + `conda activate` for every video.
-    # Call the sleap executable directly; ensure the script is launched from
-    # the correct env or set SLEAP_EXE in the OS environment.
-    sleap_exe = os.environ.get("SLEAP_EXE", "sleap-track")
-
-    cmd = [
-        sleap_exe,
-        "-m", str(model),
-        "-o", str(out_path),
-        str(video)
-    ]
-    try:
-        subprocess.run(cmd, check=True, text=True)
-    except subprocess.CalledProcessError as e:
-        print(f"[ERROR] SLEAP failed on {video} → {e}")
-
 
 def _cached_cropped_stems(folder: Path) -> Set[str]:
     """
