@@ -21,17 +21,8 @@ import cv2
 import multiprocessing
 from pipeline_params import CroppingOptions, KPDetectionOptions
 from movement.io.load_poses import from_multiview_files
+from threed_utils.io import create_2d_ds, load_calibration, get_tracked_files_dict, save_triangulated_ds
 
-
-
-def load_calibration(calibration_dir: Path):
-    calibration_paths = sorted(calibration_dir.glob("mc_calibration_output_*"))
-    last_calibration_path = calibration_paths[-1]
-
-    calib_toml_path = last_calibration_path / "calibration_from_mc.toml"
-    cam_names, img_sizes, extrinsics, intrinsics = read_calibration_toml(calib_toml_path)
-    print("Got calibration for the following cameras: ", cam_names)
-    return cam_names, img_sizes, extrinsics, intrinsics, calib_toml_path
 
 # triangulation function
 def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
@@ -75,34 +66,6 @@ def find_closest_calibration_dir(dir_path: Path) -> Path | None:
     raise ValueError(f"No calibration directory found in {dir_path}")
 
 
-def get_view_from_filename_deeplabcut(filename: str) -> str:
-    return filename.split("DLC")[0].split("_")[-1]
-
-
-def get_view_from_filename_sleap(filename: str) -> str:
-    raise NotImplementedError("SLEAP loading not supported yet")
-
-
-def get_tracked_files_dict(dir_path: Path, expected_views: tuple[str], software: str) -> dict[str, Path]:
-    suffix = None
-    parsing_function = None
-    if software == "DeepLabCut":
-        suffix = "h5"
-        parsing_function = get_view_from_filename_deeplabcut
-    elif software == "SLEAP":
-        suffix = "slp"
-        parsing_function = get_view_from_filename_sleap
-    else:
-        raise ValueError(f"Non supported software: {software}")
-    tracked_files = sorted(dir_path.glob(f"*{suffix}"))
-
-    file_path_dict = {parsing_function(f.stem): f for f in tracked_files}
-    file_path_dict = dict(sorted(file_path_dict.items()))
-    keys_tuple = tuple(file_path_dict.keys())
-    assert keys_tuple == expected_views, f"Expected views {expected_views}, got {keys_tuple}"
-    return file_path_dict
-
-
 def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_folder_pattern: str, software: str) -> list[Path]:
     """
     Find directories containing exactly 5 SLP files with matching camera views.
@@ -123,34 +86,17 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
 
     return valid_dirs
 
-def create_2d_ds(slp_files_dir: Path, expected_views: tuple[str], software: str, max_n_frames: int = 300):
-    file_path_dict = get_tracked_files_dict(slp_files_dir, expected_views, software)
-
-    ds = from_multiview_files(file_path_dict, source_software=software)
-
-    if max_n_frames is not None:
-        ds = ds.isel(time=slice(0, max_n_frames))
-
-    # print(ds.position.shape, ds.confidence.shape, ds.coords["keypoints"].values)
-
-    return ds
 
 def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_views, software):
     """ Worker function to process a single directory. """
     
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    
-    ds = create_2d_ds(valid_dir, expected_views, software)
+    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=300)
     threed_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
     
     threed_ds.attrs['fps'] = 'fps'
     threed_ds.attrs['source_file'] = 'anipose'
 
-    # Save the triangulated points using the directory name
-    save_path = valid_dir / f"{valid_dir.name}_triangulated_points_{timestamp}.h5"
-
-    threed_ds.to_netcdf(save_path)
-
+    save_path = save_triangulated_ds(threed_ds, valid_dir)
     return save_path  # Returning the path for tracking
 
 
@@ -204,16 +150,6 @@ if __name__ == "__main__":
     }
     print(f"Found {len(valid_dirs)} directories with matching views, and  calibration directories/n Proceeding with calibration")
 
-    # calibrations_set = set(calib_dirs)
-    # for dir in calibrations_set:
-    #     generate_calibration_data(Path(dir))
-    # for calib_dir in calib_dirs:
-    #     cam_names, img_sizes, extrinsics, intrinsics, calib_toml_path = load_calibration(calib_dir)
-    #     toml_files.append(calib_toml_path)
-    # print("calibrations generated and loaded successfully")
-
-    # just using a signle calibration dir for now
-    # calibration_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240722\calibration\multicam_video_2024-07-24T14_13_45_cropped_20241209165236")
     calibration_dir = Path("/Users/vigji/Desktop/test_3d/Calibration/20250509/multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328/")
     
     cam_names, img_sizes, extrinsics, intrinsics, calib_toml_path = load_calibration(calibration_dir)
