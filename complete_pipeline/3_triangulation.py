@@ -28,7 +28,6 @@ def load_calibration(calibration_dir: Path):
     calibration_paths = sorted(calibration_dir.glob("mc_calibration_output_*"))
     last_calibration_path = calibration_paths[-1]
 
-    all_calib_uvs = np.load(last_calibration_path / "all_calib_uvs.npy")
     calib_toml_path = last_calibration_path / "calibration_from_mc.toml"
     cam_names, img_sizes, extrinsics, intrinsics = read_calibration_toml(calib_toml_path)
     print("Got calibration for the following cameras: ", cam_names)
@@ -110,10 +109,6 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
     """
     valid_dirs = []
 
-    # Windows regex
-    #cam_regex = r"^[A-Za-z]:\\(?:[^\\]+\\)*multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$"
-    # cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
-
     all_candidate_folders = [f for f in root_dir.glob(f"*{crop_folder_pattern}*") if f.is_dir()]
     assert len(all_candidate_folders) > 0, f"No candidate folders found in {root_dir} with pattern {crop_folder_pattern}"
 
@@ -128,21 +123,24 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
 
     return valid_dirs
 
-def create_2d_ds(slp_files_dir: Path):
-    file_path_dict = get_tracked_files_dict(slp_files_dir)
+def create_2d_ds(slp_files_dir: Path, expected_views: tuple[str], software: str, max_n_frames: int = 300):
+    file_path_dict = get_tracked_files_dict(slp_files_dir, expected_views, software)
 
-    ds = from_multiview_files(file_path_dict)
+    ds = from_multiview_files(file_path_dict, source_software=software)
 
-    print(ds.position.shape, ds.confidence.shape, ds.coords["keypoints"].values)
+    if max_n_frames is not None:
+        ds = ds.isel(time=slice(0, max_n_frames))
+
+    # print(ds.position.shape, ds.confidence.shape, ds.coords["keypoints"].values)
 
     return ds
 
-def process_directory(valid_dir, calib_toml_path, triang_config_optim):
+def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_views, software):
     """ Worker function to process a single directory. """
-    print(valid_dir)
+    
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     
-    ds = create_2d_ds(valid_dir)
+    ds = create_2d_ds(valid_dir, expected_views, software)
     threed_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
     
     threed_ds.attrs['fps'] = 'fps'
@@ -156,7 +154,7 @@ def process_directory(valid_dir, calib_toml_path, triang_config_optim):
     return save_path  # Returning the path for tracking
 
 
-def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, num_workers=3):
+def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, expected_views, software, num_workers=3):
     """
     Parallelizes triangulation over multiple directories.
 
@@ -170,7 +168,7 @@ def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, num
 
     with multiprocessing.Pool(num_workers) as pool:
         results = list(tqdm(
-            pool.starmap(process_directory, [(d, calib_toml_path, triang_config_optim) for d in valid_dirs]),
+            pool.starmap(process_directory, [(d, calib_toml_path, triang_config_optim, expected_views, software) for d in valid_dirs]),
             total=len(valid_dirs),
             desc="Triangulating directories"
         ))
@@ -201,7 +199,7 @@ if __name__ == "__main__":
     "scale_length_weak": 0.5,
     "n_deriv_smooth": 2,
     "reproj_error_threshold": 150,
-    "constraints": [['lear','rear'], ['nose','rear'], ['nose','lear'], ['tailbase', 'upperback'], ['uppermid', 'upperback'], ['upperforward', 'uppermid']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+    "constraints": [['ear_lf','ear_rt'], ['nose','ear_rt'], ['nose','ear_lf'], ['tailbase', 'back_caudal'], ['back_mid', 'back_caudal'], ['back_rostral', 'back_mid']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
     "constraints_weak": [] #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
     }
     print(f"Found {len(valid_dirs)} directories with matching views, and  calibration directories/n Proceeding with calibration")
@@ -220,7 +218,7 @@ if __name__ == "__main__":
     
     cam_names, img_sizes, extrinsics, intrinsics, calib_toml_path = load_calibration(calibration_dir)
 
-    saved_files = parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim)
+    saved_files = parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, cropping_options.expected_views, kp_detection_options.software)
 
 
 
