@@ -95,12 +95,12 @@ def save_results(
     
     # Save calibration arguments
     hickle.dump(
-        output_dir / "args_calibration.h5",
         dict(
             all_calib_uvs=all_calib_uvs,
             all_img_sizes=all_img_sizes,
             calib_objpoints=calib_objpoints,
         ),
+        str(output_dir / "args_calibration.h5")
     )
     
     # Save calibration to TOML

@@ -6,3 +6,4 @@ PyYAML
 vidio
 flammkuchen
 toml
+aniposelib
