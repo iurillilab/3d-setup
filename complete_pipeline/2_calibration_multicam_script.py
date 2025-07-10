@@ -10,7 +10,7 @@ import matplotlib
 matplotlib.use('Agg')  # Configure backend before importing pyplot
 import matplotlib.pyplot as plt
 import numpy as np
-from threed_utils.multiview_calibration.detection import run_calibration_detection, detect_chessboard, plot_chessboard_qc_data
+from threed_utils.multiview_calibration.detection import run_checkerboard_detection, detect_chessboard, plot_chessboard_qc_data
 from threed_utils.multiview_calibration.calibration import calibrate, get_intrinsics
 from threed_utils.multiview_calibration.bundle_adjustment import bundle_adjust
 from threed_utils.multiview_calibration.viz import plot_residuals, plot_shared_detections
@@ -43,33 +43,13 @@ def find_video_files(data_dir: Path) -> List[Path]:
     """Find video files in the data directory."""
     video_paths = [
         f for f in data_dir.iterdir() 
-        if f.suffix == ".avi.mp4" and "overlay" not in f.stem
+        if f.suffix == ".mp4" and "overlay" not in f.stem
     ]
     
     if not video_paths:
         raise ValueError(f"No video files found in {data_dir}")
     
     return video_paths
-
-
-def run_calibration_detection(
-    video_paths: List[Path],
-    options: CalibrationOptions,
-) -> tuple[np.ndarray, List[tuple]]:
-    """Run calibration detection on video files."""
-    print("Detecting points, if not already detected...")
-    
-    all_calib_uvs, all_img_sizes = mcc.run_calibration_detection(
-        list(map(str, video_paths)),
-        mcc.detect_chessboard,
-        n_workers=options.n_workers,
-        detection_options=dict(
-            board_shape=options.board_shape, 
-            scale_factor=options.scale_factor
-        ),
-    )
-    
-    return all_calib_uvs, all_img_sizes
 
 
 def run_calibration(
@@ -81,7 +61,7 @@ def run_calibration(
     """Run the calibration process."""
     print("Running calibration...")
     
-    all_extrinsics, all_intrinsics, calib_poses, spanning_tree = mcc.calibrate(
+    all_extrinsics, all_intrinsics, calib_poses, spanning_tree = calibrate(
         all_calib_uvs,
         all_img_sizes,
         calib_objpoints,
@@ -103,7 +83,7 @@ def run_bundle_adjustment(
     """Run bundle adjustment optimization."""
     print("Running bundle adjustment...")
     
-    adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result = mcc.bundle_adjust(
+    adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result = bundle_adjust(
         all_calib_uvs,
         all_extrinsics,
         all_intrinsics,
@@ -169,17 +149,17 @@ def generate_plots(
     print("Generating plots...")
     
     # Plot corner-match scores
-    fig = mcc.plot_chessboard_qc_data(video_paths)
+    fig = plot_chessboard_qc_data(video_paths)
     fig.savefig(output_dir / "checkerboard_errors.png")
     plt.close(fig)
     
     # Plot shared detections
-    fig, shared_detections = mcc.plot_shared_detections(all_calib_uvs, spanning_tree)
+    fig, shared_detections = plot_shared_detections(all_calib_uvs, spanning_tree)
     fig.savefig(output_dir / "shared_detections.png")
     plt.close(fig)
     
     # Plot residuals
-    fig, median_error, reprojections, transformed_reprojections = mcc.plot_residuals(
+    fig, median_error, reprojections, transformed_reprojections = plot_residuals(
         all_calib_uvs,
         all_extrinsics,
         all_intrinsics,
@@ -191,7 +171,7 @@ def generate_plots(
     plt.close(fig)
     
     # Plot refined residuals
-    fig, median_error, reprojections, transformed_reprojections = mcc.plot_residuals(
+    fig, median_error, reprojections, transformed_reprojections = plot_residuals(
         all_calib_uvs[:, use_frames],
         adj_extrinsics,
         adj_intrinsics,
@@ -259,10 +239,10 @@ def run_calibration_pipeline(
     print(f"Found cameras: {camera_names}")
     
     # Run detection
-    all_calib_uvs, all_img_sizes = run_calibration_detection(video_paths, options)
+    all_calib_uvs, all_img_sizes = run_checkerboard_detection(video_paths, options)
     
     # Generate object points
-    calib_objpoints = mcc.generate_chessboard_objpoints(options.board_shape, options.square_size)
+    calib_objpoints = generate_chessboard_objpoints(options.board_shape, options.square_size)
     
     # Run calibration
     all_extrinsics, all_intrinsics, calib_poses, spanning_tree = run_calibration(

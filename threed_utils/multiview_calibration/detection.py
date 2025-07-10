@@ -8,12 +8,15 @@ import tqdm
 import h5py
 import cv2
 import os
+from pathlib import Path
 
 from .geometry import euclidean_to_homogenous, homogeneous_to_euclidean
 
 # -----------------------------------------------------------------------------#
 #               General calibration object detection utilities                #
 # -----------------------------------------------------------------------------#
+
+DEFAULT_N_WORKERS = 10
 
 
 def _worker(frame_queue, result_queue, detection_fun, detection_kwargs):
@@ -142,6 +145,37 @@ def process_video(
         h5.create_dataset("img_size", data=img_size)
         if qc_data is not None:
             h5.create_dataset("qc_data", data=qc_data)
+
+
+def run_checkerboard_detection(
+    folder: Path,
+    extension: str = "mp4",
+    overwrite: bool = False,
+    detection_options: dict = None,
+    n_workers: int = DEFAULT_N_WORKERS,
+) -> None:
+    """
+    Run checkerboard detection on all video files in *folder*.
+    """
+
+    options_dict = detection_options
+
+    video_files = list(folder.rglob(f"*.{extension}"))
+    
+    if not video_files:
+        raise ValueError(f"No video files found in {folder}")
+    
+    print(f"Found {len(video_files)} video files in {folder}")
+    
+    all_videos = [str(video_file) for video_file in video_files]
+    
+    return run_calibration_detection(
+        all_videos,
+        detect_chessboard,
+        detection_options=options_dict,
+        n_workers=n_workers,
+        overwrite=overwrite,
+    )
 
 
 def run_calibration_detection(
