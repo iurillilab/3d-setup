@@ -307,6 +307,7 @@ def detect_chessboard(
     normalize_image=True,
     reorder=True,
     match_score_min_diff=0.2,
+    match_score_min=0.5,
 ):
     """
     Detect corners of a chessboard and order them using a anchor point.
@@ -395,7 +396,10 @@ def detect_chessboard(
             uvs, match_scores, _ = reorder_chessboard_corners(
                 image, uvs, board_shape, 
             )
-            if match_scores[0] - match_scores[1] < match_score_min_diff:
+            if (
+                match_scores[0] - match_scores[1] < match_score_min_diff
+                or match_scores[0] < match_score_min
+            ):
                 return None
             else:
                 return uvs, match_scores

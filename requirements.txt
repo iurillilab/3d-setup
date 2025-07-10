@@ -3,3 +3,4 @@ pandas
 napari
 movement
 PyYAML
+vidio
