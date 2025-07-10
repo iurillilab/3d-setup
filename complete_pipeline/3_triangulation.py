@@ -19,7 +19,7 @@ from threed_utils.io import write_calibration_toml
 from tqdm import tqdm, trange
 import cv2
 import multiprocessing
-from pipeline_params import CroppingOptions
+from pipeline_params import CroppingOptions, KPDetectionOptions
 from movement.io.load_poses import from_multiview_files
 
 
@@ -76,7 +76,35 @@ def find_closest_calibration_dir(dir_path: Path) -> Path | None:
     raise ValueError(f"No calibration directory found in {dir_path}")
 
 
-def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_folder_pattern: str, recompute=True) -> list[Path]:
+def get_view_from_filename_deeplabcut(filename: str) -> str:
+    return filename.split("DLC")[0].split("_")[-1]
+
+
+def get_view_from_filename_sleap(filename: str) -> str:
+    raise NotImplementedError("SLEAP loading not supported yet")
+
+
+def get_tracked_files_dict(dir_path: Path, expected_views: tuple[str], software: str) -> dict[str, Path]:
+    suffix = None
+    parsing_function = None
+    if software == "DeepLabCut":
+        suffix = "h5"
+        parsing_function = get_view_from_filename_deeplabcut
+    elif software == "SLEAP":
+        suffix = "slp"
+        parsing_function = get_view_from_filename_sleap
+    else:
+        raise ValueError(f"Non supported software: {software}")
+    tracked_files = sorted(dir_path.glob(f"*{suffix}"))
+
+    file_path_dict = {parsing_function(f.stem): f for f in tracked_files}
+    file_path_dict = dict(sorted(file_path_dict.items()))
+    keys_tuple = tuple(file_path_dict.keys())
+    assert keys_tuple == expected_views, f"Expected views {expected_views}, got {keys_tuple}"
+    return file_path_dict
+
+
+def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_folder_pattern: str, software: str) -> list[Path]:
     """
     Find directories containing exactly 5 SLP files with matching camera views.
     """
@@ -89,88 +117,23 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
     all_candidate_folders = [f for f in root_dir.glob(f"*{crop_folder_pattern}*") if f.is_dir()]
     assert len(all_candidate_folders) > 0, f"No candidate folders found in {root_dir} with pattern {crop_folder_pattern}"
 
-    parent_dict = {folder.parent: [] for folder in all_candidate_folders}
-    
+    valid_dirs = []
     for candidate_folder in all_candidate_folders:
-        parent_dict[candidate_folder.parent].append(candidate_folder)
-    
-    last_folders = [sorted(folders)[-1] for folders in parent_dict.values()]
-
-    #Unix regex
-    #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$"  # Updated regex
-
-    # Recursively iterate through all directories
-    # for directory in root_dir.rglob('*'):
-    for directory in last_folders:    
-        #if not directory.is_dir():
-        #    continue
-
-        if "calibration" in [parent.name.lower() for parent in directory.parents]:
-            continue
-        # Get all SLP files in the current directory
-        slp_files = list(directory.glob('*.slp'))
-
-        if not recompute and len(list(directory.glob("*triangulated_points_*.h5"))) > 0:
+        try:
+            get_tracked_files_dict(candidate_folder, expected_views, software)
+            valid_dirs.append(candidate_folder)
+        except AssertionError as e:
+            print(f"Skipping {candidate_folder} because it does not have the expected views: {e}")
             continue
 
-        # Extract camera views from filenames
-        # current_views = set()
-        #for f in slp_files:
-        #    match = re.search(cam_regex, f.name)
-        #    if match:
-        #        camera_name = match.group(1)  # Extract camera view name
-        #        current_views.add(camera_name)
-        #    else:
-        #        continue
-
-
-        # If we found exactly 5 matching views and they match the expected views
-        # if len(current_views) == 5 and current_views == expected_views:
-        if len(slp_files) == len(CroppingOptions.expected_views):
-            valid_dirs.append(directory)
-    valid_dirs.reverse() # to avoid possible error 
     return valid_dirs
 
 def create_2d_ds(slp_files_dir: Path):
-    tracked_files = sorted(slp_files_dir.glob("*detection.h5"))
-    # Windows regex
-    # cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
+    file_path_dict = get_tracked_files_dict(slp_files_dir)
 
-
-    #mac regex
-    #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$" 
-
-    # file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
-    # From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
-    # views_list = list(file_path_dict.keys())
-    file_path_dict = {f.stem.split("_")[-1]: f for f in tracked_files}
-    assert set(file_path_dict.keys()) == CroppingOptions.expected_views, f"Expected views {CroppingOptions.expected_views}, got {set(file_path_dict.keys())}"
-
-    ds = from_multiview_files(tracked_files)
-
-    # views_list = list(file_path_dict.keys())
-    # new_coord_views = xr.DataArray(views_list, dims="view")
-
-    # dataset_list = [
-    #     from_file(f, source_software="DeepLabCut")
-    #     for f in file_path_dict.values()
-    # ]
-    # # make coordinates labels of the keypoints axis all lowercase
-    # for ds in dataset_list:
-    #     ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
-
-
-    # # time_slice = slice(0, 1000)
-    # ds = xr.concat(dataset_list, dim=new_coord_views)
-
-    # bodyparts = list(ds.coords["keypoints"].values)
-
-    # print(bodyparts)
+    ds = from_multiview_files(file_path_dict)
 
     print(ds.position.shape, ds.confidence.shape, ds.coords["keypoints"].values)
-
-    # ds.attrs['fps'] = 
-    # ds.attrs['source_file'] = 'sleap'
 
     return ds
 
@@ -180,14 +143,15 @@ def process_directory(valid_dir, calib_toml_path, triang_config_optim):
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     
     ds = create_2d_ds(valid_dir)
-    _3d_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
+    threed_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
     
-    _3d_ds.attrs['fps'] = 'fps'
-    _3d_ds.attrs['source_file'] = 'anipose'
+    threed_ds.attrs['fps'] = 'fps'
+    threed_ds.attrs['source_file'] = 'anipose'
 
     # Save the triangulated points using the directory name
     save_path = valid_dir / f"{valid_dir.name}_triangulated_points_{timestamp}.h5"
-    _3d_ds.to_netcdf(save_path)
+
+    threed_ds.to_netcdf(save_path)
 
     return save_path  # Returning the path for tracking
 
@@ -220,9 +184,9 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     cropping_options = CroppingOptions()
     data_dir = Path("/Users/vigji/Desktop/test_3d/M29/20250507/cricket/133050") #  Path(args.data_dir)
-    
+    kp_detection_options = KPDetectionOptions()
     expected_views = {'mirror-bottom', 'mirror-left', 'mirror-top', 'central', 'mirror-right'}
-    valid_dirs = find_dirs_with_matching_views(data_dir, expected_views, cropping_options.crop_folder_pattern, recompute=False)
+    valid_dirs = find_dirs_with_matching_views(data_dir, cropping_options.expected_views, cropping_options.crop_folder_pattern, kp_detection_options.software)
     #calib_dirs = [find_closest_calibration_dir(dir) for dir in valid_dirs]
     toml_files = []
 

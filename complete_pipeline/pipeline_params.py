@@ -1,11 +1,17 @@
 from calendar import c
 from dataclasses import dataclass
+from wsgiref.simple_server import software_version
 
 
 @dataclass
 class CroppingOptions:
     crop_folder_pattern: str = "cropped-v2"
-    expected_views: tuple[str] = ("mirror-left", "mirror-right", "mirror-top", "mirror-bottom", "central")
+    expected_views: tuple[str] = ("central", "mirror-bottom", "mirror-left", "mirror-right", "mirror-top")
+
+
+@dataclass
+class KPDetectionOptions:
+    software: str = "DeepLabCut"
 
 @dataclass
 class ProcessingOptions:
