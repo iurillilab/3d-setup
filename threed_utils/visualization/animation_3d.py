@@ -8,47 +8,48 @@ import argparse
 from movement.io.load_poses import from_file 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from threed_utils.io import create_2d_ds, load_video_mapping
 
 
 
-def create_2d_ds(slp_files_dir: Path):
-    slp_files = list(slp_files_dir.glob("*.slp"))
-    # Windows regex
-    cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
+# def create_2d_ds(slp_files_dir: Path):
+#     slp_files = list(slp_files_dir.glob("*.slp"))
+#     # Windows regex
+#     cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
 
 
 
-    #mac regex
-    #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$" 
+#     #mac regex
+#     #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$" 
 
 
-    file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
-    # From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
-    views_list = list(file_path_dict.keys())
-    new_coord_views = xr.DataArray(views_list, dims="view")
+#     file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
+#     # From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
+#     views_list = list(file_path_dict.keys())
+#     new_coord_views = xr.DataArray(views_list, dims="view")
 
-    dataset_list = [
-        from_file(f, source_software="SLEAP")
-        for f in file_path_dict.values()
-    ]
-    # make coordinates labels of the keypoints axis all lowercase
-    for ds in dataset_list:
-        ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
+#     dataset_list = [
+#         from_file(f, source_software="SLEAP")
+#         for f in file_path_dict.values()
+#     ]
+#     # make coordinates labels of the keypoints axis all lowercase
+#     for ds in dataset_list:
+#         ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
 
 
-    # time_slice = slice(0, 1000)
-    ds = xr.concat(dataset_list, dim=new_coord_views)
+#     # time_slice = slice(0, 1000)
+#     ds = xr.concat(dataset_list, dim=new_coord_views)
 
-    bodyparts = list(ds.coords["keypoints"].values)
+#     bodyparts = list(ds.coords["keypoints"].values)
 
-    print(bodyparts)
+#     print(bodyparts)
 
-    print(ds.position.shape, ds.confidence.shape, bodyparts)
+#     print(ds.position.shape, ds.confidence.shape, bodyparts)
 
-    ds.attrs['fps'] = 'fps'
-    ds.attrs['source_file'] = 'sleap'
+#     ds.attrs['fps'] = 'fps'
+#     ds.attrs['source_file'] = 'sleap'
 
-    return ds
+#     return ds
 
 def load_3d_poses(root_dir: Path):
     # Exclude files containing 'reprojection' in the filename
@@ -75,6 +76,8 @@ def load_video_mapping(root_dir, views):
         if view not in mapping:
             raise FileNotFoundError(f"No video file found for view '{view}'")
     return mapping
+
+
 def plot_3d_pose_matplotlib(ax, keypoints_3d, keypoint_names, skeleton):
     """
     Plots 3D pose on the given ax with skeleton connections.
