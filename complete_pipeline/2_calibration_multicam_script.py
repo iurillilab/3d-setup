@@ -10,7 +10,7 @@ import matplotlib
 matplotlib.use('Agg')  # Configure backend before importing pyplot
 import matplotlib.pyplot as plt
 import numpy as np
-from threed_utils.multiview_calibration.detection import run_checkerboard_detection, detect_chessboard, plot_chessboard_qc_data
+from threed_utils.multiview_calibration.detection import run_checkerboard_detection, detect_chessboard, plot_chessboard_qc_data, generate_chessboard_objpoints
 from threed_utils.multiview_calibration.calibration import calibrate, get_intrinsics
 from threed_utils.multiview_calibration.bundle_adjustment import bundle_adjust
 from threed_utils.multiview_calibration.viz import plot_residuals, plot_shared_detections
@@ -19,25 +19,8 @@ from tqdm import tqdm, trange
 import flammkuchen as fl
 from threed_utils.io import write_calibration_toml
 import cv2
+from pipeline_params import CalibrationOptions, DetectionOptions, DetectionRunnerOptions, ProcessingOptions
 
-# ----------------------------------------------------------------------
-# CONFIG
-# ----------------------------------------------------------------------
-
-@dataclass
-class CalibrationOptions:
-    board_shape: tuple[int, int] = (5, 7)
-    square_size: float = 12.5
-    scale_factor: float = 0.5
-    n_workers: int = 6
-    n_samples_for_intrinsics: int = 100
-    ftol: float = 1e-4
-    overlay: bool = False
-
-
-# ----------------------------------------------------------------------
-# HELPERS
-# ----------------------------------------------------------------------
 
 def find_video_files(data_dir: Path) -> List[Path]:
     """Find video files in the data directory."""
@@ -52,48 +35,48 @@ def find_video_files(data_dir: Path) -> List[Path]:
     return video_paths
 
 
-def run_calibration(
-    all_calib_uvs: np.ndarray,
-    all_img_sizes: List[tuple],
-    calib_objpoints: np.ndarray,
-    options: CalibrationOptions,
-) -> tuple:
-    """Run the calibration process."""
-    print("Running calibration...")
+# def run_calibration(
+#     all_calib_uvs: np.ndarray,
+#     all_img_sizes: List[tuple],
+#     calib_objpoints: np.ndarray,
+#     options: CalibrationOptions,
+# ) -> tuple:
+#     """Run the calibration process."""
+#     print("Running calibration...")
     
-    all_extrinsics, all_intrinsics, calib_poses, spanning_tree = calibrate(
-        all_calib_uvs,
-        all_img_sizes,
-        calib_objpoints,
-        root=0,
-        n_samples_for_intrinsics=options.n_samples_for_intrinsics,
-    )
+#     all_extrinsics, all_intrinsics, calib_poses, spanning_tree = calibrate(
+#         all_calib_uvs,
+#         all_img_sizes,
+#         calib_objpoints,
+#         root=0,
+#         n_samples_for_intrinsics=options.n_samples_for_intrinsics,
+#     )
     
-    return all_extrinsics, all_intrinsics, calib_poses, spanning_tree
+#     return all_extrinsics, all_intrinsics, calib_poses, spanning_tree
 
 
-def run_bundle_adjustment(
-    all_calib_uvs: np.ndarray,
-    all_extrinsics: np.ndarray,
-    all_intrinsics: np.ndarray,
-    calib_objpoints: np.ndarray,
-    calib_poses: np.ndarray,
-    options: CalibrationOptions,
-) -> tuple:
-    """Run bundle adjustment optimization."""
-    print("Running bundle adjustment...")
+# def run_bundle_adjustment(
+#     all_calib_uvs: np.ndarray,
+#     all_extrinsics: np.ndarray,
+#     all_intrinsics: np.ndarray,
+#     calib_objpoints: np.ndarray,
+#     calib_poses: np.ndarray,
+#     options: CalibrationOptions,
+# ) -> tuple:
+#     """Run bundle adjustment optimization."""
+#     print("Running bundle adjustment...")
     
-    adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result = bundle_adjust(
-        all_calib_uvs,
-        all_extrinsics,
-        all_intrinsics,
-        calib_objpoints,
-        calib_poses,
-        n_frames=None,
-        ftol=options.ftol,
-    )
+#     adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result = bundle_adjust(
+#         all_calib_uvs,
+#         all_extrinsics,
+#         all_intrinsics,
+#         calib_objpoints,
+#         calib_poses,
+#         n_frames=None,
+#         ftol=options.ftol,
+#     )
     
-    return adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result
+#     return adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result
 
 
 def save_results(
@@ -144,6 +127,7 @@ def generate_plots(
     adj_intrinsics: np.ndarray,
     adj_calib_poses: np.ndarray,
     use_frames: np.ndarray,
+    spanning_tree: np.ndarray,
 ) -> None:
     """Generate and save calibration plots."""
     print("Generating plots...")
@@ -224,7 +208,10 @@ def test_triangulation(
 
 def run_calibration_pipeline(
     folder: Path,
-    options: CalibrationOptions,
+    detection_options: DetectionOptions,
+    detection_runner_options: DetectionRunnerOptions,
+    calibration_options: CalibrationOptions,
+    n_workers: int,
 ) -> None:
     """Run the complete calibration pipeline."""
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -232,32 +219,34 @@ def run_calibration_pipeline(
     output_dir.mkdir(exist_ok=True)
     
     print(f"Output directory: {output_dir}")
-    
-    # Find video files
-    video_paths = find_video_files(folder)
-    camera_names = [p.stem.split("_")[-1].split(".avi.mp4")[0] for p in video_paths]
+        
+    # Run detection
+    all_calib_uvs, all_img_sizes, video_files_dict = run_checkerboard_detection(folder, 
+                                                                            extension=detection_runner_options.video_extension, 
+                                                                            overwrite=detection_runner_options.overwrite,
+                                                                            detection_options=asdict(detection_options),
+                                                                            n_workers=n_workers)
+    camera_names = list(video_files_dict.keys())
+    video_paths = list(video_files_dict.values())
     print(f"Found cameras: {camera_names}")
     
-    # Run detection
-    all_calib_uvs, all_img_sizes = run_checkerboard_detection(video_paths, options)
-    
     # Generate object points
-    calib_objpoints = generate_chessboard_objpoints(options.board_shape, options.square_size)
+    calib_objpoints = generate_chessboard_objpoints(detection_options.board_shape, calibration_options.square_size)
     
     # Run calibration
-    all_extrinsics, all_intrinsics, calib_poses, spanning_tree = run_calibration(
-        all_calib_uvs, all_img_sizes, calib_objpoints, options
+    all_extrinsics, all_intrinsics, calib_poses, spanning_tree = calibrate(
+        all_calib_uvs, all_img_sizes, calib_objpoints, n_samples_for_intrinsics=calibration_options.n_samples_for_intrinsics
     )
     
     # Run bundle adjustment
-    adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result = run_bundle_adjustment(
-        all_calib_uvs, all_extrinsics, all_intrinsics, calib_objpoints, calib_poses, options
+    adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result = bundle_adjust(
+        all_calib_uvs, all_extrinsics, all_intrinsics, calib_objpoints, calib_poses, n_frames=calibration_options.n_frames, ftol=calibration_options.ftol
     )
     
     # Generate plots
     generate_plots(
         output_dir, video_paths, all_calib_uvs, all_extrinsics, all_intrinsics,
-        calib_objpoints, calib_poses, adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames
+        calib_objpoints, calib_poses, adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, spanning_tree  
     )
     
     # Save results
@@ -287,8 +276,8 @@ if __name__ == "__main__":
         "--board-shape", 
         type=int, 
         nargs=2, 
-        default=CalibrationOptions.board_shape,
-        help=f"Checkerboard shape (rows, cols). Default: {CalibrationOptions.board_shape}"
+        default=DetectionOptions.board_shape,
+        help=f"Checkerboard shape (rows, cols). Default: {DetectionOptions.board_shape}"
     )
     parser.add_argument(
         "--square-size", 
@@ -305,8 +294,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n-workers", 
         type=int, 
-        default=CalibrationOptions.n_workers,
-        help=f"Number of worker processes. Default: {CalibrationOptions.n_workers}"
+        default=ProcessingOptions.n_workers,
+        help=f"Number of worker processes. Default: {ProcessingOptions.n_workers}"
     )
     parser.add_argument(
         "--n-samples-for-intrinsics",
@@ -331,11 +320,9 @@ if __name__ == "__main__":
     if not args.folder.exists():
         raise FileNotFoundError(f"Data directory not found: {args.folder}")
 
-    options = CalibrationOptions(
-        board_shape=tuple(args.board_shape),
+    calibration_options = CalibrationOptions(
         square_size=args.square_size,
         scale_factor=args.scale_factor,
-        n_workers=args.n_workers,
         n_samples_for_intrinsics=args.n_samples_for_intrinsics,
         ftol=args.ftol,
         overlay=args.overlay,
@@ -343,5 +330,16 @@ if __name__ == "__main__":
 
     run_calibration_pipeline(
         folder=args.folder,
-        options=options,
+        calibration_options=calibration_options,
+        detection_options=DetectionOptions(
+            board_shape=args.board_shape,
+            match_score_min_diff=DetectionOptions.match_score_min_diff,
+            match_score_min=DetectionOptions.match_score_min,
+        ),
+        detection_runner_options=DetectionRunnerOptions(
+            video_extension=DetectionRunnerOptions.video_extension,
+            overwrite=DetectionRunnerOptions.overwrite,
+        ),
+        n_workers=args.n_workers,
+
     )

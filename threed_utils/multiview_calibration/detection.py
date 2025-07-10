@@ -9,6 +9,7 @@ import h5py
 import cv2
 import os
 from pathlib import Path
+from typing import List
 
 from .geometry import euclidean_to_homogenous, homogeneous_to_euclidean
 
@@ -147,6 +148,11 @@ def process_video(
             h5.create_dataset("qc_data", data=qc_data)
 
 
+def find_video_files(folder: Path, extension: str = "mp4") -> List[Path]:
+    """Find all video files in a folder."""
+    return {p.stem.split("_")[-1]:p for p in sorted(folder.glob(f"*.{extension}"))}
+
+
 def run_checkerboard_detection(
     folder: Path,
     extension: str = "mp4",
@@ -159,23 +165,27 @@ def run_checkerboard_detection(
     """
 
     options_dict = detection_options
-
-    video_files = list(folder.rglob(f"*.{extension}"))
+    print(f"*.{extension}")
+    assert folder.exists(), f"Folder {folder} does not exist"
     
-    if not video_files:
+    video_files_dict = find_video_files(folder, extension)
+    
+    if not video_files_dict:
         raise ValueError(f"No video files found in {folder}")
     
-    print(f"Found {len(video_files)} video files in {folder}")
+    print(f"Found {len(video_files_dict)} video files in {folder}")
     
-    all_videos = [str(video_file) for video_file in video_files]
+    all_videos = [str(video_file) for video_file in video_files_dict.values()]
     
-    return run_calibration_detection(
+    all_calib_uvs, all_img_sizes = run_calibration_detection(
         all_videos,
         detect_chessboard,
         detection_options=options_dict,
         n_workers=n_workers,
         overwrite=overwrite,
     )
+
+    return all_calib_uvs, all_img_sizes, video_files_dict
 
 
 def run_calibration_detection(

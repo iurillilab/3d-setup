@@ -1,4 +1,10 @@
+from calendar import c
 from dataclasses import dataclass
+
+
+@dataclass
+class ProcessingOptions:
+    n_workers: int = 6
 
 @dataclass
 class DetectionOptions:
@@ -13,3 +19,11 @@ class DetectionRunnerOptions:
     overwrite: bool = False
 
 
+@dataclass
+class CalibrationOptions:
+    square_size: float = 12.5
+    scale_factor: float = 0.5
+    n_samples_for_intrinsics: int = 100
+    ftol: float = 1e-4
+    overlay: bool = False
+    n_frames: int | None = None
