@@ -28,13 +28,13 @@ def _cached_cropped_stems(folder: Path) -> Set[str]:
 def process_videos_in_folder(folder: Path,
                              json_file: Path,
                              timestamp: str,
+                             crop_folder_pattern: str = "cropped-v2",
                              skip_existing: bool = True) -> None:
     """
     Find all AVI videos in *folder*, crop each view, optionally run inference.
     Skips files that already have a matching *_cropped-vX_* sibling when
     *skip_existing* is True.
     """
-    crop_header_string = "cropped-v2"
     # deterministic order → easier to compare timings
     avi_files = sorted(folder.rglob("*.avi"))
 
@@ -49,7 +49,7 @@ def process_videos_in_folder(folder: Path,
         if skip_existing and avi_file.stem in done_stems:
             continue
 
-        out_dir = avi_file.parent / f"{avi_file.stem}_{crop_header_string}_{timestamp}"
+        out_dir = avi_file.parent / f"{avi_file.stem}_{crop_folder_pattern}_{timestamp}"
         cropped_files = crop_all_views(avi_file, out_dir, json_file, verbose=False)
         cropped_files = [f.result() for f in cropped_files]
 
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     parser.add_argument("--json_file", type=Path, help="JSON with crop params. Defaults to crop_params.json in folder", default=None)
     parser.add_argument("--skip_existing", action="store_true",
                         help="Skip processing if *_cropped_* exists.")
-
+    parser.add_argument("--crop_folder_pattern", type=str, help="Pattern for cropped folder. Defaults to cropped-v2", default="cropped-v2")
     args = parser.parse_args()
 
     if not args.json_file:
@@ -81,4 +81,5 @@ if __name__ == "__main__":
         json_file=args.json_file,
         timestamp=timestamp,
         skip_existing=args.skip_existing,
+        crop_folder_pattern=args.crop_folder_pattern,
     )

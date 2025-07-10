@@ -19,6 +19,8 @@ from threed_utils.io import write_calibration_toml
 from tqdm import tqdm, trange
 import cv2
 import multiprocessing
+from pipeline_params import CroppingOptions
+from movement.io.load_poses import from_multiview_files
 
 
 
@@ -68,12 +70,13 @@ def find_closest_calibration_dir(dir_path: Path) -> Path | None:
             l = [f for f in calib_dir.iterdir()]
             for f in l:
                 if re.search(reg, f.name):
+                    print(f"Found calibration directory {f} for {dir_path}")
                     return f
         current = current.parent
     raise ValueError(f"No calibration directory found in {dir_path}")
 
 
-def find_dirs_with_matching_views(root_dir: Path, expected_views: set, recompute=True) -> list[Path]:
+def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_folder_pattern: str, recompute=True) -> list[Path]:
     """
     Find directories containing exactly 5 SLP files with matching camera views.
     """
@@ -83,7 +86,9 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, recompute
     #cam_regex = r"^[A-Za-z]:\\(?:[^\\]+\\)*multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$"
     # cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
 
-    all_candidate_folders = [f for f in root_dir.rglob("multicam_video_*_cropped_*") if f.is_dir()]
+    all_candidate_folders = [f for f in root_dir.glob(f"*{crop_folder_pattern}*") if f.is_dir()]
+    assert len(all_candidate_folders) > 0, f"No candidate folders found in {root_dir} with pattern {crop_folder_pattern}"
+
     parent_dict = {folder.parent: [] for folder in all_candidate_folders}
     
     for candidate_folder in all_candidate_folders:
@@ -121,192 +126,53 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, recompute
 
         # If we found exactly 5 matching views and they match the expected views
         # if len(current_views) == 5 and current_views == expected_views:
-        if len(slp_files) == 5:
+        if len(slp_files) == len(CroppingOptions.expected_views):
             valid_dirs.append(directory)
     valid_dirs.reverse() # to avoid possible error 
     return valid_dirs
 
 def create_2d_ds(slp_files_dir: Path):
-    slp_files = list(slp_files_dir.glob("*.slp"))
+    tracked_files = sorted(slp_files_dir.glob("*detection.h5"))
     # Windows regex
-    cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
-
+    # cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)predictions\.slp$"
 
 
     #mac regex
     #cam_regex = r"multicam_video_\d{4}-\d{2}-\d{2}T\d{2}_\d{2}_\d{2}_([^_]+)_predictions\.slp$" 
 
-
-    file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
+    # file_path_dict = {re.search(cam_regex, str(f.name)).groups()[0]: f for f in slp_files}
     # From movement.io.load_poses.from_multiview_files, split out here just to fix uppercase inconsistency bug:
-    views_list = list(file_path_dict.keys())
-    new_coord_views = xr.DataArray(views_list, dims="view")
+    # views_list = list(file_path_dict.keys())
+    file_path_dict = {f.stem.split("_")[-1]: f for f in tracked_files}
+    assert set(file_path_dict.keys()) == CroppingOptions.expected_views, f"Expected views {CroppingOptions.expected_views}, got {set(file_path_dict.keys())}"
 
-    dataset_list = [
-        from_file(f, source_software="SLEAP")
-        for f in file_path_dict.values()
-    ]
-    # make coordinates labels of the keypoints axis all lowercase
-    for ds in dataset_list:
-        ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
+    ds = from_multiview_files(tracked_files)
+
+    # views_list = list(file_path_dict.keys())
+    # new_coord_views = xr.DataArray(views_list, dims="view")
+
+    # dataset_list = [
+    #     from_file(f, source_software="DeepLabCut")
+    #     for f in file_path_dict.values()
+    # ]
+    # # make coordinates labels of the keypoints axis all lowercase
+    # for ds in dataset_list:
+    #     ds.coords["keypoints"] = ds.coords["keypoints"].str.lower()
 
 
-    # time_slice = slice(0, 1000)
-    ds = xr.concat(dataset_list, dim=new_coord_views)
+    # # time_slice = slice(0, 1000)
+    # ds = xr.concat(dataset_list, dim=new_coord_views)
 
-    bodyparts = list(ds.coords["keypoints"].values)
+    # bodyparts = list(ds.coords["keypoints"].values)
 
-    print(bodyparts)
+    # print(bodyparts)
 
-    print(ds.position.shape, ds.confidence.shape, bodyparts)
+    print(ds.position.shape, ds.confidence.shape, ds.coords["keypoints"].values)
 
-    ds.attrs['fps'] = 'fps'
-    ds.attrs['source_file'] = 'sleap'
+    # ds.attrs['fps'] = 
+    # ds.attrs['source_file'] = 'sleap'
 
     return ds
-
-
-# def generate_calibration_data(calibration_dir):
-#     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-#     board_shape = (5, 7)
-#     square_size = 12.5
-#     data_dir = calibration_dir
-#     output_dir = data_dir / f"mc_calibration_output_{timestamp}"
-#     output_dir.mkdir(exist_ok=True)
-
-#     video_paths = [
-#         f for f in data_dir.iterdir() if f.suffix == ".mp4" and "overlay" not in f.stem
-#     ]
-
-#     camera_names = [p.stem.split("_")[-1].split(".avi")[0] for p in video_paths]
-#     print(camera_names)
-
-#     print("Detecting points, if not already detected...")
-#     # detect calibration object in each video
-#     all_calib_uvs, all_img_sizes = mcc.run_calibration_detection(
-#         list(map(str, video_paths)),
-#         mcc.detect_chessboard,
-#         n_workers=6,
-#         detection_options=dict(board_shape=board_shape, scale_factor=0.5),
-#     )
-#     np.save(output_dir / "all_calib_uvs.npy", all_calib_uvs)
-#     # plot corner-match scores for each frame
-#     fig = mcc.plot_chessboard_qc_data(video_paths)
-#     fig.savefig(output_dir / "checkerboard_errors.png")
-
-#     # optionally generate overlay videos:
-#     overlay = False
-#     if overlay:
-#         print("Generating overlay videos...")
-#         for p in video_paths:
-#             mcc.overlay_detections(p, overwrite=True)
-
-
-#     # generate object points:
-#     calib_objpoints = mcc.generate_chessboard_objpoints(board_shape, square_size)
-
-#     fl.save(
-#         output_dir / "args_calibration.h5",
-#         dict(
-#             all_calib_uvs=all_calib_uvs,
-#             all_img_sizes=all_img_sizes,
-#             calib_objpoints=calib_objpoints,
-#         ),
-#     )
-#     # ================================
-#     # Calibration
-#     # ================================
-#     all_extrinsics, all_intrinsics, calib_poses, spanning_tree = mcc.calibrate(
-#         all_calib_uvs,
-#         all_img_sizes,
-#         calib_objpoints,
-#         root=0,
-#         n_samples_for_intrinsics=100,
-#     )
-
-#     fig, shared_detections = mcc.plot_shared_detections(all_calib_uvs, spanning_tree)
-#     fig.savefig(output_dir / "shared_detections.png")
-
-#     n_cameras, n_frames, N, _ = all_calib_uvs.shape
-
-#     median_error = np.zeros(n_cameras)
-#     reprojections = np.zeros((n_cameras, n_frames, N, 2))
-#     transformed_reprojections = np.zeros((n_cameras, n_frames, N, 2)) * np.nan
-#     pts = mcc.embed_calib_objpoints(calib_objpoints, calib_poses)
-
-#     # ================================
-#     # Residuals
-#     # ================================
-#     errors_list = []
-#     for cam in trange(n_cameras):
-#         reprojections[cam] = mcc.project_points(
-#             pts, all_extrinsics[cam], all_intrinsics[cam][0]
-#         )
-#         uvs_undistorted = mcc.undistort_points(all_calib_uvs[cam], *all_intrinsics[cam])
-#         valid_ixs = np.nonzero(~np.isnan(uvs_undistorted).any((-1, -2)))[0]
-#         for t in valid_ixs:
-#             H = cv2.findHomography(uvs_undistorted[t], calib_objpoints[:, :2])
-#             transformed_reprojections[cam, t] = cv2.perspectiveTransform(
-#                 reprojections[cam, t][np.newaxis], H[0]
-#             )[0]
-
-#         errors = np.linalg.norm(
-#             transformed_reprojections[cam, valid_ixs] - calib_objpoints[:, :2],
-#             axis=-1,
-#         )
-#         median_error[cam] = np.median(errors)
-#         errors_arr = np.zeros(n_frames) * np.nan
-#         errors_arr[valid_ixs] = np.median(errors, axis=1)
-#         errors_list.append(errors_arr)
-
-#     f, axs = plt.subplots(len(errors_list), 1, figsize=(10, 4), sharex=True, sharey=True)
-
-#     for i, errors in enumerate(errors_list):
-#         axs[i].plot(errors + i * 20, c=f"C{i}")
-#     f.savefig(output_dir / "residuals.png")
-
-#     fig, median_error, reprojections, transformed_reprojections = mcc.plot_residuals(
-#         all_calib_uvs,
-#         all_extrinsics,
-#         all_intrinsics,
-#         calib_objpoints,
-#         calib_poses,
-#         inches_per_axis=3,
-#     )
-#     fig.savefig(output_dir / "first_residuals.png")
-
-
-#     # ================================
-#     # Bundle adjustment
-#     # ================================
-#     adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result = mcc.bundle_adjust(
-#         all_calib_uvs,
-#         all_extrinsics,
-#         all_intrinsics,
-#         calib_objpoints,
-#         calib_poses,
-#         n_frames=None,
-#         ftol=1e-4,
-#     )
-
-#     nan_counts = np.isnan(all_calib_uvs).sum((0, 1, 2, 3))
-
-#     fig, median_error, reprojections, transformed_reprojections = mcc.plot_residuals(
-#         all_calib_uvs[:, use_frames],
-#         adj_extrinsics,
-#         adj_intrinsics,
-#         calib_objpoints,
-#         adj_calib_poses,
-#         inches_per_axis=3,
-#     )
-#     fig.savefig(output_dir / "refined_residuals.png")
-
-#     # Write current calibration to TOML
-#     cam_names = [Path(p).stem.split("_")[-1].split(".avi")[0] for p in video_paths]
-#     write_calibration_toml(output_dir / "calibration_from_mc.toml", 
-#                         cam_names, all_img_sizes, adj_extrinsics, adj_intrinsics, result)
-    
-#     return output_dir
 
 def process_directory(valid_dir, calib_toml_path, triang_config_optim):
     """ Worker function to process a single directory. """
@@ -324,6 +190,7 @@ def process_directory(valid_dir, calib_toml_path, triang_config_optim):
     _3d_ds.to_netcdf(save_path)
 
     return save_path  # Returning the path for tracking
+
 
 def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, num_workers=3):
     """
@@ -351,10 +218,11 @@ if __name__ == "__main__":
     # parser = argparse.ArgumentParser(description="Triangulate all files in a directory")
     # parser.add_argument("--data_dir", type=str, required=True, help="Path to the directory containing the data")
     # args = parser.parse_args()
+    cropping_options = CroppingOptions()
     data_dir = Path("/Users/vigji/Desktop/test_3d/M29/20250507/cricket/133050") #  Path(args.data_dir)
     
     expected_views = {'mirror-bottom', 'mirror-left', 'mirror-top', 'central', 'mirror-right'}
-    valid_dirs = find_dirs_with_matching_views(data_dir, expected_views, recompute=False)
+    valid_dirs = find_dirs_with_matching_views(data_dir, expected_views, cropping_options.crop_folder_pattern, recompute=False)
     #calib_dirs = [find_closest_calibration_dir(dir) for dir in valid_dirs]
     toml_files = []
 

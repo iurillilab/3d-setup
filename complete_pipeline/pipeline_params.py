@@ -3,6 +3,11 @@ from dataclasses import dataclass
 
 
 @dataclass
+class CroppingOptions:
+    crop_folder_pattern: str = "cropped-v2"
+    expected_views: tuple[str] = ("mirror-left", "mirror-right", "mirror-top", "mirror-bottom", "central")
+
+@dataclass
 class ProcessingOptions:
     n_workers: int = 6
 
