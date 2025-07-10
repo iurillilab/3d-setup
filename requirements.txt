@@ -4,3 +4,5 @@ napari
 movement
 PyYAML
 vidio
+flammkuchen
+toml
