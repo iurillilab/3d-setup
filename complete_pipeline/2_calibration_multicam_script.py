@@ -16,7 +16,7 @@ from threed_utils.multiview_calibration.bundle_adjustment import bundle_adjust
 from threed_utils.multiview_calibration.viz import plot_residuals, plot_shared_detections
 from threed_utils.multiview_calibration.geometry import triangulate
 from tqdm import tqdm, trange
-import flammkuchen as fl
+import hickle
 from threed_utils.io import write_calibration_toml
 import cv2
 from pipeline_params import CalibrationOptions, DetectionOptions, DetectionRunnerOptions, ProcessingOptions
@@ -94,7 +94,7 @@ def save_results(
     np.save(output_dir / "all_calib_uvs.npy", all_calib_uvs)
     
     # Save calibration arguments
-    fl.save(
+    hickle.dump(
         output_dir / "args_calibration.h5",
         dict(
             all_calib_uvs=all_calib_uvs,
