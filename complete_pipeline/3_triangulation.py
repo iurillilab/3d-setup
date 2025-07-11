@@ -21,7 +21,7 @@ import cv2
 import multiprocessing
 from pipeline_params import CroppingOptions, KPDetectionOptions
 from movement.io.load_poses import from_multiview_files
-from threed_utils.io import create_2d_ds, load_calibration, get_tracked_files_dict, save_triangulated_ds
+from threed_utils.io import create_2d_ds, load_calibration, get_pose_files_dict, save_triangulated_ds
 
 
 # triangulation function
@@ -78,7 +78,7 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
     valid_dirs = []
     for candidate_folder in all_candidate_folders:
         try:
-            get_tracked_files_dict(candidate_folder, expected_views, software)
+            get_pose_files_dict(candidate_folder, expected_views, software)
             valid_dirs.append(candidate_folder)
         except AssertionError as e:
             print(f"Skipping {candidate_folder} because it does not have the expected views: {e}")
@@ -90,7 +90,7 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
 def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_views, software):
     """ Worker function to process a single directory. """
     
-    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=300)
+    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=10000)
     threed_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
     
     threed_ds.attrs['fps'] = 'fps'
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     "optim_chunking": True,
     "optim_chunking_size": 100,
     "score_threshold": 0.7,
-    "scale_smooth": 1,
+    "scale_smooth": 3,
     "scale_length": 3,
     "scale_length_weak": 0.5,
     "n_deriv_smooth": 2,

@@ -6,6 +6,25 @@ from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 
+SKELETON = [('nose', 'ear_lf'), 
+                            ('nose', 'ear_rt'),
+                           ('ear_lf', 'ear_rt'),
+                           ('ear_lf', 'back_rostral'),
+                           ('ear_rt', 'back_rostral'),
+                           ('back_rostral', 'back_mid'),
+                           ('back_mid', 'back_caudal'),
+                           ('back_caudal', 'tailbase'),
+                           ('tailbase', 'belly_caudal'),
+                           ('belly_caudal', 'belly_rostral'),
+                           ('back_caudal', 'hindpaw_lf'),
+                           ('back_caudal', 'hindpaw_rt'),
+                           ('back_mid', 'hindpaw_lf'),
+                           ('back_mid', 'hindpaw_rt'),
+                           ('back_mid', 'forepaw_lf'),
+                           ('back_mid', 'forepaw_rt'),
+                           ('back_rostral', 'forepaw_lf'),
+                           ('back_rostral', 'forepaw_rt')]
+
 def movement_ds_from_anipose_triangulation_df(triang_df, individual_name="checkerboard"):
     """Convert triangulation dataframe to xarray dataset.
     Reshape dataframe with columns keypoint1_x, keypoint1_y, keypoint1_z, keypoint1_confidence_score, 
@@ -133,24 +152,7 @@ def create_2d_ds(slp_files_dir: Path, expected_views: tuple[str], software: str,
     file_path_dict = get_pose_files_dict(slp_files_dir, expected_views, software)
 
     # ds.attrs['fps'] = 'fps'
-    SKELETON = [('nose', 'ear_lf'), 
-                            ('nose', 'ear_rt'),
-                           ('ear_lf', 'ear_rt'),
-                           ('ear_lf', 'back_rostral'),
-                           ('ear_rt', 'back_rostral'),
-                           ('back_rostral', 'back_mid'),
-                           ('back_mid', 'back_caudal'),
-                           ('back_caudal', 'tailbase'),
-                           ('tailbase', 'belly_caudal'),
-                           ('belly_caudal', 'belly_rostral'),
-                           ('back_caudal', 'hindpaw_lf'),
-                           ('back_caudal', 'hindpaw_rt'),
-                           ('back_mid', 'hindpaw_lf'),
-                           ('back_mid', 'hindpaw_rt'),
-                           ('back_mid', 'forepaw_lf'),
-                           ('back_mid', 'forepaw_rt'),
-                           ('back_rostral', 'forepaw_lf'),
-                           ('back_rostral', 'forepaw_rt')]
+    
 
     # views_list = list(file_path_dict.keys())
     ds = from_multiview_files(file_path_dict, source_software=software)
@@ -166,13 +168,17 @@ def save_triangulated_ds(ds: xr.Dataset, valid_dir: Path):
     # Save the triangulated points using the directory name
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     save_path = valid_dir / f"{valid_dir.name}_triangulated_points_{timestamp}.h5"
+
+    ds.attrs['skeleton'] = SKELETON
     ds.to_netcdf(save_path)
 
     return save_path
 
 
 def load_triangulated_ds(save_path: Path):
-    return xr.open_dataset(save_path)
+    ds = xr.open_dataset(save_path)
+    ds.attrs['skeleton'] = SKELETON
+    return ds
 
 
 if __name__ == "__main__":
