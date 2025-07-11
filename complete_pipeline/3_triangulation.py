@@ -3,52 +3,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import pandas as pd
-import xarray as xr
-from threed_utils.io import movement_ds_from_anipose_triangulation_df, read_calibration_toml
-from threed_utils.anipose.triangulate import CameraGroup, triangulate_core
-import argparse
-import re
-from movement.io.load_poses import from_file
+from threed_utils.io import read_calibration_toml
 import matplotlib
 matplotlib.use('Agg') 
 from pathlib import Path
 from tqdm import tqdm
-from datetime import datetime
-import flammkuchen as fl
-from threed_utils.io import write_calibration_toml
-from tqdm import tqdm, trange
-import cv2
+from tqdm import tqdm
 import multiprocessing
 from pipeline_params import CroppingOptions, KPDetectionOptions
-from movement.io.load_poses import from_multiview_files
 from threed_utils.io import create_2d_ds, load_calibration, get_pose_files_dict, save_triangulated_ds
 from threed_utils.arena_utils import load_arena_coordinates, triangulate_arena, get_arena_points_from_dataset
 from threed_utils.visualization.skeleton_plots import plot_skeleton_3d, set_axes_equal
-
+from threed_utils.anipose.movement_anipose import anipose_triangulate_ds
 
 # triangulation function
-def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
-    triang_config = config_kwargs
-    config = dict(triangulation=triang_config)
 
-    calib_fname = str(calib_toml_path)
-    cgroup = CameraGroup.load(calib_fname)
-    # read toml file and use the views to order the dimenensions of the views_ds, so thne you are sure that when you will do the back projeciton thsoe are the same order of the matrices.
-
-    individual_name = views_ds.coords["individuals"][0]
-    reshaped_ds = views_ds.sel(individuals=individual_name).transpose("view", "time", "keypoints", "space")
-    # sort over view axis using the view ordring
-    positions = reshaped_ds.position.values
-    scores = reshaped_ds.confidence.values
-
-    triang_df = triangulate_core(config, 
-                 positions, 
-                 scores, 
-                 views_ds.coords["keypoints"].values, 
-                 cgroup, 
-                 )
-
-    return movement_ds_from_anipose_triangulation_df(triang_df)
 
 
 def find_closest_calibration_dir(dir_path: Path) -> Path | None:

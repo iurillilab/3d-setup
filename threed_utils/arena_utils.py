@@ -10,8 +10,9 @@ import numpy as np
 import xarray as xr
 from pathlib import Path
 from movement.io.load_poses import from_numpy
-from threed_utils.io import read_calibration_toml
+from threed_utils.io import read_calibration_toml, movement_ds_from_anipose_triangulation_df
 from threed_utils.anipose.triangulate import CameraGroup, triangulate_core
+from threed_utils.anipose.movement_anipose import anipose_triangulate_ds
 
 
 def load_arena_coordinates(arena_json_path: Path) -> dict:
@@ -62,32 +63,35 @@ def create_arena_dataset(arena_coordinates: dict, cam_names: list) -> xr.Dataset
             raise ValueError(f"Camera {cam_name} not found in arena coordinates")
     
     # Stack arrays to create (1, 2, n_keypoints, 1) array
-    arena_data = np.stack(arena_arrays, axis=0).T
-    arena_data = arena_data[np.newaxis, :, :, np.newaxis]
-    print(arena_data.shape)
-    
+    arena_data = np.stack(arena_arrays, axis=0).swapaxes(1, 2)[:, np.newaxis, :, :, np.newaxis]
+
     # Create keypoint names (arena corners)
-    n_keypoints = arena_data.shape[1]
+    n_keypoints = 8
     keypoint_names = [f"arena_corner_{i}" for i in range(n_keypoints)]
     
     # Create dataset
+    print(keypoint_names)
+    print(arena_data.shape)
+    print(cam_names)
     ds = xr.Dataset(
         {
             'position': xr.DataArray(
                 arena_data,
-                dims=['view', 'space','keypoints'],
+                dims=['view', 'time', 'space', 'keypoints', 'individuals'],
                 coords={
                     'view': cam_names,
-                    'keypoints': keypoint_names,
+                    'time': [0],
                     'space': ['x', 'y'],
+                    'keypoints': keypoint_names,
                     'individuals': ['arena']
                 }
             ),
             'confidence': xr.DataArray(
-                np.ones((len(cam_names), 1, n_keypoints)),
-                dims=['view', 'keypoints', 'individuals'],
+                np.ones_like(arena_data)[:, :, 0, :, :],
+                dims=['view', 'time', 'keypoints', 'individuals'],
                 coords={
                     'view': cam_names,
+                    'time': [0],
                     'keypoints': keypoint_names,
                     'individuals': ['arena']
                 }
@@ -101,8 +105,7 @@ def create_arena_dataset(arena_coordinates: dict, cam_names: list) -> xr.Dataset
     return ds
 
 
-def triangulate_arena(arena_coordinates: dict, calib_toml_path: Path, 
-                     cam_names: list = None) -> xr.Dataset:
+def triangulate_arena(arena_coordinates: dict, calib_toml_path: Path) -> xr.Dataset:
     """
     Triangulate arena points using calibration data.
     
@@ -121,11 +124,9 @@ def triangulate_arena(arena_coordinates: dict, calib_toml_path: Path,
         Dataset containing triangulated 3D arena points
     """
     # Load calibration data
-    if cam_names is None:
-        cam_names, _, _, _ = read_calibration_toml(calib_toml_path)
+    cam_names, _, _, _ = read_calibration_toml(calib_toml_path)
     
     # Create arena dataset
-    print(arena_coordinates)
     arena_2d_ds = create_arena_dataset(arena_coordinates, cam_names)
     print(arena_2d_ds, arena_2d_ds.position.shape)
     
@@ -146,55 +147,18 @@ def triangulate_arena(arena_coordinates: dict, calib_toml_path: Path,
     positions = arena_2d_ds.position.values  # (n_views, n_keypoints, 2)
     scores = arena_2d_ds.confidence.values   # (n_views, n_keypoints)
     
-    # Add time dimension if not present
-    if len(positions.shape) == 3:
-        positions = positions[np.newaxis, ...]  # (1, n_views, n_keypoints, 2)
-        scores = scores[np.newaxis, ...]       # (1, n_views, n_keypoints)
-    
     # Triangulate
-    triang_df = triangulate_core(
-        config, 
-        positions, 
-        scores, 
-        arena_2d_ds.coords["keypoints"].values, 
-        cgroup, 
+    arena_3d_ds = anipose_triangulate_ds(
+        arena_2d_ds, 
+        calib_toml_path, 
+        **triang_config, 
     )
-    
-    # Convert to movement dataset
-    arena_3d_ds = movement_ds_from_anipose_triangulation_df(triang_df, individual_name="arena")
-    
+
     return arena_3d_ds
 
 
-def movement_ds_from_anipose_triangulation_df(triang_df, individual_name="arena"):
-    """Convert triangulation dataframe to xarray dataset for arena points."""
-    keypoint_names = sorted(list(set([col.rsplit('_', 1)[0] for col in triang_df.columns 
-                                   if any(col.endswith(f'_{s}') for s in ['x','y','z'])])))
-
-    n_frames = len(triang_df)
-    n_keypoints = len(keypoint_names)
-
-    # Initialize arrays and fill
-    position_array = np.zeros((n_frames, 1, n_keypoints, 3))  # 1 for single individual
-    confidence_array = np.zeros((n_frames, 1, n_keypoints))
-    
-    for i, kp in enumerate(keypoint_names):
-        for j, coord in enumerate(['x', 'y', 'z']):
-            position_array[:, 0, i, j] = triang_df[f'{kp}_{coord}']
-        confidence_array[:, 0, i] = triang_df[f'{kp}_score']
-
-    individual_names = [individual_name]
-    position_array = position_array.transpose(0, 3, 2, 1)
-    confidence_array = confidence_array.transpose(0, 2, 1)
-
-    return from_numpy(position_array=position_array,
-                     confidence_array=confidence_array, 
-                     individual_names=individual_names,
-                     keypoint_names=keypoint_names,
-                     source_software="anipose_triangulation")
-
-
-def get_arena_points_from_dataset(arena_ds: xr.Dataset, time_idx: int = 0) -> np.ndarray:
+# def get_arena_points_from_dataset(arena_ds: xr.Dataset, time_idx: int = 0) -> np.ndarray:
+def get_triangulated_arena_ds(arena_points_json_path: Path, calib_toml_path: Path) -> xr.Dataset:
     """
     Extract arena points from dataset for plotting.
     
@@ -210,9 +174,10 @@ def get_arena_points_from_dataset(arena_ds: xr.Dataset, time_idx: int = 0) -> np
     np.ndarray
         Array of arena points with shape (n_points, 3)
     """
-    positions = arena_ds.position.isel(time=time_idx, individuals=0)
-    arena_points = positions.transpose('keypoints', 'space').values
-    return arena_points
+    arena_coordinates = load_arena_coordinates(arena_points_json_path)
+    # arena_ds = create_arena_dataset(arena_coordinates, calib_toml_path)
+    arena_3d_ds = triangulate_arena(arena_coordinates, calib_toml_path)
+    return arena_3d_ds
 
 
 def plot_arena_with_mouse(mouse_ds: xr.Dataset, arena_ds: xr.Dataset, 
@@ -265,6 +230,23 @@ def plot_arena_with_mouse(mouse_ds: xr.Dataset, arena_ds: xr.Dataset,
     plt.show()
     
     return fig, ax
+
+
+def get_arena_points_from_dataset(arena_ds: xr.Dataset, time_idx: int = 0) -> np.ndarray:
+    """
+    Extract arena points from dataset for plotting.
+    
+    Parameters
+    ----------
+    arena_ds : xarray.Dataset   
+
+    Returns
+    -------
+    np.ndarray
+        Array of arena points with shape (n_points, 3)
+    """
+    arena_points = arena_ds.position.isel(time=time_idx, individuals=0)
+    return arena_points.transpose('keypoints', 'space').values
 
 
 def create_arena_mouse_animation(mouse_ds: xr.Dataset, arena_ds: xr.Dataset,

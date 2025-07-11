@@ -8,7 +8,7 @@ import numpy as np
 from movement.filtering import filter_by_confidence
 
 from threed_utils.visualization.skeleton_plots import create_skeleton_animation, plot_skeleton_3d, set_axes_equal
-from threed_utils.arena_utils import load_arena_coordinates, triangulate_arena, get_arena_points_from_dataset
+from threed_utils.arena_utils import get_triangulated_arena_ds, get_arena_points_from_dataset
 
 filename="/Users/vigji/Desktop/test_3d/M29/20250507/cricket/133050/multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021/multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021_triangulated_points_20250711-173845.h5"
 filename = Path(filename)
@@ -36,8 +36,7 @@ cam_names, img_sizes, extrinsics, intrinsics, calib_toml_path = load_calibration
 
 # Load and triangulate arena
 arena_json_path = Path("/Users/vigji/Desktop/test_3d/multicam_video_2025-05-07T10_12_11_20250528-153946.json")
-arena_coordinates = load_arena_coordinates(arena_json_path)
-arena_ds = triangulate_arena(arena_coordinates, calib_toml_path, cam_names)
+arena_ds = get_triangulated_arena_ds(arena_json_path, calib_toml_path)
 
 # %%
 plt.figure()
