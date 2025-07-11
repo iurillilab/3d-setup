@@ -1,5 +1,5 @@
 import numpy as np
-from movement.io.load_poses import from_file, from_multiview_files
+from movement.io.load_poses import from_file, from_multiview_files, from_numpy
 import toml
 import xarray as xr
 from datetime import datetime
@@ -169,7 +169,6 @@ def save_triangulated_ds(ds: xr.Dataset, valid_dir: Path):
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     save_path = valid_dir / f"{valid_dir.name}_triangulated_points_{timestamp}.h5"
 
-    ds.attrs['skeleton'] = SKELETON
     ds.to_netcdf(save_path)
 
     return save_path
@@ -177,6 +176,7 @@ def save_triangulated_ds(ds: xr.Dataset, valid_dir: Path):
 
 def load_triangulated_ds(save_path: Path):
     ds = xr.open_dataset(save_path)
+    # TODO save in the file
     ds.attrs['skeleton'] = SKELETON
     return ds
 

@@ -12,9 +12,39 @@ import xarray as xr
 from pathlib import Path
 
 
+def set_axes_equal(ax):
+    """
+    Make axes of 3D plot have equal scale so that spheres appear as spheres,
+    cubes as cubes, etc.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        A matplotlib axis, e.g., as output from plt.gca().
+    """
+    x_limits = ax.get_xlim3d()
+    y_limits = ax.get_ylim3d()
+    z_limits = ax.get_zlim3d()
+
+    x_range = abs(x_limits[1] - x_limits[0])
+    x_middle = np.mean(x_limits)
+    y_range = abs(y_limits[1] - y_limits[0])
+    y_middle = np.mean(y_limits)
+    z_range = abs(z_limits[1] - z_limits[0])
+    z_middle = np.mean(z_limits)
+
+    # The plot bounding box is a sphere in the sense of the infinity
+    # norm, hence I call half the max range the plot radius.
+    plot_radius = 0.5 * max([x_range, y_range, z_range])
+
+    ax.set_xlim3d([x_middle - plot_radius, x_middle + plot_radius])
+    ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
+    ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
+
+
 def plot_skeleton_3d(dataset, time_idx=0, individual_idx=0, ax=None, 
                     keypoint_size=50, segment_width=2, keypoint_color='red', 
-                    segment_color='blue', alpha=0.8):
+                    segment_color='blue', alpha=0.8, arena_points=None, arena_color='lightgray'):
     """
     Plot the skeleton from a triangulated dataset at a specific time point.
     
@@ -38,6 +68,10 @@ def plot_skeleton_3d(dataset, time_idx=0, individual_idx=0, ax=None,
         Color for skeleton segments (default: 'blue')
     alpha : float, optional
         Transparency for segments (default: 0.8)
+    arena_points : np.ndarray, optional
+        Arena points to plot (shape: n_points, 3) (default: None)
+    arena_color : str, optional
+        Color for arena points (default: 'lightgray')
     
     Returns
     -------
@@ -47,6 +81,11 @@ def plot_skeleton_3d(dataset, time_idx=0, individual_idx=0, ax=None,
     if ax is None:
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot arena points if provided
+    if arena_points is not None:
+        ax.scatter(arena_points[:, 0], arena_points[:, 1], arena_points[:, 2], 
+                  c=arena_color, s=30, alpha=0.6, label='Arena')
     
     # Get position data for the specified time and individual
     positions = dataset.position.isel(time=time_idx, individuals=individual_idx)
@@ -96,6 +135,9 @@ def plot_skeleton_3d(dataset, time_idx=0, individual_idx=0, ax=None,
     # Set equal aspect ratio for accurate 3D representation
     ax.set_box_aspect([1, 1, 1])
     
+    # Apply equal axes scaling
+    set_axes_equal(ax)
+    
     # Add legend
     ax.legend()
     
@@ -104,7 +146,7 @@ def plot_skeleton_3d(dataset, time_idx=0, individual_idx=0, ax=None,
 
 def plot_skeleton_trajectory(dataset, start_time=0, end_time=None, individual_idx=0, 
                            ax=None, trajectory_alpha=0.3, current_frame_alpha=0.8,
-                           keypoint_size=50, segment_width=2):
+                           keypoint_size=50, segment_width=2, arena_points=None, arena_color='lightgray'):
     """
     Plot skeleton trajectory over time with current frame highlighted.
     
@@ -128,6 +170,10 @@ def plot_skeleton_trajectory(dataset, start_time=0, end_time=None, individual_id
         Size of keypoint markers (default: 50)
     segment_width : int, optional
         Width of skeleton segment lines (default: 2)
+    arena_points : np.ndarray, optional
+        Arena points to plot (shape: n_points, 3) (default: None)
+    arena_color : str, optional
+        Color for arena points (default: 'lightgray')
     
     Returns
     -------
@@ -140,6 +186,11 @@ def plot_skeleton_trajectory(dataset, start_time=0, end_time=None, individual_id
     
     if end_time is None:
         end_time = dataset.sizes['time']
+    
+    # Plot arena points if provided
+    if arena_points is not None:
+        ax.scatter(arena_points[:, 0], arena_points[:, 1], arena_points[:, 2], 
+                  c=arena_color, s=30, alpha=0.6, label='Arena')
     
     # Get position data for the time range
     positions = dataset.position.isel(individuals=individual_idx).sel(time=slice(start_time, end_time))
@@ -170,18 +221,23 @@ def plot_skeleton_trajectory(dataset, start_time=0, end_time=None, individual_id
     # Plot current frame skeleton
     plot_skeleton_3d(dataset, time_idx=end_time-1, individual_idx=individual_idx, 
                     ax=ax, keypoint_size=keypoint_size, segment_width=segment_width,
-                    keypoint_color='red', segment_color='blue', alpha=current_frame_alpha)
+                    keypoint_color='red', segment_color='blue', alpha=current_frame_alpha,
+                    arena_points=None)  # Don't plot arena again
     
     ax.set_title(f'Skeleton trajectory (frames {start_time}-{end_time-1})')
     
     # Set equal aspect ratio for accurate 3D representation
     ax.set_box_aspect([1, 1, 1])
     
+    # Apply equal axes scaling
+    set_axes_equal(ax)
+    
     return ax
 
 
 def create_skeleton_animation(dataset, start_time=0, end_time=None, individual_idx=0,
-                           interval=100, keypoint_size=50, segment_width=2):
+                           interval=100, keypoint_size=50, segment_width=2, 
+                           arena_points=None, arena_color='lightgray'):
     """
     Create an animated skeleton plot.
     
@@ -201,6 +257,10 @@ def create_skeleton_animation(dataset, start_time=0, end_time=None, individual_i
         Size of keypoint markers (default: 50)
     segment_width : int, optional
         Width of skeleton segment lines (default: 2)
+    arena_points : np.ndarray, optional
+        Arena points to plot (shape: n_points, 3) (default: None)
+    arena_color : str, optional
+        Color for arena points (default: 'lightgray')
     
     Returns
     -------
@@ -238,6 +298,11 @@ def create_skeleton_animation(dataset, start_time=0, end_time=None, individual_i
         ax.set_ylabel('Y (mm)')
         ax.set_zlabel('Z (mm)')
         
+        # Plot arena points if provided
+        if arena_points is not None:
+            ax.scatter(arena_points[:, 0], arena_points[:, 1], arena_points[:, 2], 
+                      c=arena_color, s=30, alpha=0.6, label='Arena')
+        
         if np.any(valid_mask):
             ax.set_xlim(x_data[valid_mask].min(), x_data[valid_mask].max())
             ax.set_ylim(y_data[valid_mask].min(), y_data[valid_mask].max())
@@ -247,8 +312,12 @@ def create_skeleton_animation(dataset, start_time=0, end_time=None, individual_i
         ax.set_box_aspect([1, 1, 1])
         
         plot_skeleton_3d(dataset, time_idx=start_time + frame_idx, individual_idx=individual_idx,
-                        ax=ax, keypoint_size=keypoint_size, segment_width=segment_width)
+                        ax=ax, keypoint_size=keypoint_size, segment_width=segment_width,
+                        arena_points=None)  # Don't plot arena again
         ax.set_title(f'Skeleton animation - Frame {start_time + frame_idx}')
+        
+        # Apply equal axes scaling
+        set_axes_equal(ax)
     
     anim = FuncAnimation(fig, animate, frames=end_time-start_time, 
                        interval=interval, blit=False, repeat=True)
@@ -257,7 +326,8 @@ def create_skeleton_animation(dataset, start_time=0, end_time=None, individual_i
 
 
 def plot_multiple_frames(dataset, time_indices, individual_idx=0, n_cols=3, 
-                        figsize=(15, 12), keypoint_size=30, segment_width=1):
+                        figsize=(15, 12), keypoint_size=30, segment_width=1,
+                        arena_points=None, arena_color='lightgray'):
     """
     Plot multiple skeleton frames in a grid layout.
     
@@ -277,6 +347,10 @@ def plot_multiple_frames(dataset, time_indices, individual_idx=0, n_cols=3,
         Size of keypoint markers (default: 30)
     segment_width : int, optional
         Width of skeleton segment lines (default: 1)
+    arena_points : np.ndarray, optional
+        Arena points to plot (shape: n_points, 3) (default: None)
+    arena_color : str, optional
+        Color for arena points (default: 'lightgray')
     
     Returns
     -------
@@ -291,17 +365,21 @@ def plot_multiple_frames(dataset, time_indices, individual_idx=0, n_cols=3,
     for i, time_idx in enumerate(time_indices):
         ax = fig.add_subplot(n_rows, n_cols, i + 1, projection='3d')
         plot_skeleton_3d(dataset, time_idx=time_idx, individual_idx=individual_idx,
-                        ax=ax, keypoint_size=keypoint_size, segment_width=segment_width)
+                        ax=ax, keypoint_size=keypoint_size, segment_width=segment_width,
+                        arena_points=arena_points, arena_color=arena_color)
         ax.set_title(f'Frame {time_idx}')
         # Set equal aspect ratio for accurate 3D representation
         ax.set_box_aspect([1, 1, 1])
+        # Apply equal axes scaling
+        set_axes_equal(ax)
     
     plt.tight_layout()
     return fig
 
 
 def plot_skeleton_with_confidence(dataset, time_idx=0, individual_idx=0, ax=None,
-                                confidence_threshold=0.5, keypoint_size=50, segment_width=2):
+                                confidence_threshold=0.5, keypoint_size=50, segment_width=2,
+                                arena_points=None, arena_color='lightgray'):
     """
     Plot skeleton with confidence-based coloring.
     
@@ -321,6 +399,10 @@ def plot_skeleton_with_confidence(dataset, time_idx=0, individual_idx=0, ax=None
         Size of keypoint markers (default: 50)
     segment_width : int, optional
         Width of skeleton segment lines (default: 2)
+    arena_points : np.ndarray, optional
+        Arena points to plot (shape: n_points, 3) (default: None)
+    arena_color : str, optional
+        Color for arena points (default: 'lightgray')
     
     Returns
     -------
@@ -330,6 +412,11 @@ def plot_skeleton_with_confidence(dataset, time_idx=0, individual_idx=0, ax=None
     if ax is None:
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot arena points if provided
+    if arena_points is not None:
+        ax.scatter(arena_points[:, 0], arena_points[:, 1], arena_points[:, 2], 
+                  c=arena_color, s=30, alpha=0.6, label='Arena')
     
     # Get position and confidence data
     positions = dataset.position.isel(time=time_idx, individuals=individual_idx)
@@ -381,6 +468,9 @@ def plot_skeleton_with_confidence(dataset, time_idx=0, individual_idx=0, ax=None
     
     # Set equal aspect ratio for accurate 3D representation
     ax.set_box_aspect([1, 1, 1])
+    
+    # Apply equal axes scaling
+    set_axes_equal(ax)
     
     ax.legend()
     

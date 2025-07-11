@@ -22,6 +22,8 @@ import multiprocessing
 from pipeline_params import CroppingOptions, KPDetectionOptions
 from movement.io.load_poses import from_multiview_files
 from threed_utils.io import create_2d_ds, load_calibration, get_pose_files_dict, save_triangulated_ds
+from threed_utils.arena_utils import load_arena_coordinates, triangulate_arena, get_arena_points_from_dataset
+from threed_utils.visualization.skeleton_plots import plot_skeleton_3d, set_axes_equal
 
 
 # triangulation function
@@ -47,7 +49,6 @@ def anipose_triangulate_ds(views_ds, calib_toml_path, **config_kwargs):
                  )
 
     return movement_ds_from_anipose_triangulation_df(triang_df)
-
 
 
 def find_closest_calibration_dir(dir_path: Path) -> Path | None:
@@ -87,20 +88,55 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
     return valid_dirs
 
 
-def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_views, software):
+def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_views, software, arena_json_path=None):
     """ Worker function to process a single directory. """
     
-    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=10000)
+    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=3000)
     threed_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
     
     threed_ds.attrs['fps'] = 'fps'
     threed_ds.attrs['source_file'] = 'anipose'
 
     save_path = save_triangulated_ds(threed_ds, valid_dir)
+    
+    # Create visualization with arena if provided
+    if arena_json_path and arena_json_path.exists():
+        try:
+            # Load and triangulate arena
+            arena_coordinates = load_arena_coordinates(arena_json_path)
+            cam_names, _, _, _ = read_calibration_toml(calib_toml_path)
+            arena_ds = triangulate_arena(arena_coordinates, calib_toml_path, cam_names)
+            
+            # Create visualization
+            arena_points = get_arena_points_from_dataset(arena_ds, 0)
+            
+            # Plot first frame with arena
+            fig = plt.figure(figsize=(12, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            
+            # Plot arena points
+            ax.scatter(arena_points[:, 0], arena_points[:, 1], arena_points[:, 2], 
+                      c='lightgray', s=50, alpha=0.8, label='Arena')
+            
+            # Plot mouse skeleton
+            plot_skeleton_3d(threed_ds, time_idx=0, individual_idx=0, ax=ax, arena_points=None)
+            ax.set_title(f'Arena and Mouse - {valid_dir.name}')
+            set_axes_equal(ax)
+            
+            # Save visualization
+            viz_path = valid_dir / f"{valid_dir.name}_arena_mouse_viz.png"
+            plt.savefig(viz_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"Saved arena-mouse visualization to {viz_path}")
+            
+        except Exception as e:
+            print(f"Warning: Could not create arena visualization for {valid_dir}: {e}")
+    
     return save_path  # Returning the path for tracking
 
 
-def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, expected_views, software, num_workers=3):
+def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, expected_views, software, num_workers=3, arena_json_path=None):
     """
     Parallelizes triangulation over multiple directories.
 
@@ -108,13 +144,14 @@ def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, exp
     :param calib_toml_path: Path to calibration file.
     :param triang_config_optim: Triangulation configuration.
     :param num_workers: Number of parallel processes (default: all available cores).
+    :param arena_json_path: Path to arena JSON file (optional).
     :return: List of saved file paths.
     """
     num_workers = num_workers or min(multiprocessing.cpu_count(), len(valid_dirs))
 
     with multiprocessing.Pool(num_workers) as pool:
         results = list(tqdm(
-            pool.starmap(process_directory, [(d, calib_toml_path, triang_config_optim, expected_views, software) for d in valid_dirs]),
+            pool.starmap(process_directory, [(d, calib_toml_path, triang_config_optim, expected_views, software, arena_json_path) for d in valid_dirs]),
             total=len(valid_dirs),
             desc="Triangulating directories"
         ))
@@ -154,7 +191,10 @@ if __name__ == "__main__":
     
     cam_names, img_sizes, extrinsics, intrinsics, calib_toml_path = load_calibration(calibration_dir)
 
-    saved_files = parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, cropping_options.expected_views, kp_detection_options.software)
+    # Arena JSON path
+    arena_json_path = Path("/Users/vigji/Desktop/test_3d/multicam_video_2025-05-07T10_12_11_20250528-153946.json")
+
+    saved_files = parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, cropping_options.expected_views, kp_detection_options.software, arena_json_path=arena_json_path)
 
 
 
