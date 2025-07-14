@@ -36,8 +36,9 @@ def load_arena_coordinates(arena_json_path: Path) -> dict:
     arena_data = data[-1]['points_coordinate']
     return arena_data
 
+    
 
-def create_arena_dataset(arena_coordinates: dict, cam_names: list) -> xr.Dataset:
+def load_arena_multiview_ds(arena_json_path: Path) -> xr.Dataset:
     """
     Create a movement dataset from arena coordinates.
     
@@ -53,17 +54,20 @@ def create_arena_dataset(arena_coordinates: dict, cam_names: list) -> xr.Dataset
     xarray.Dataset
         Dataset containing arena coordinates with dimensions (view, keypoints, space)
     """
+    arena_coordinates = load_arena_coordinates(arena_json_path)
+    print(arena_coordinates)
     # Convert arena coordinates to arrays
+    view_names = sorted(arena_coordinates.keys())
     arena_arrays = []
-    for cam_name in cam_names:
-        if cam_name in arena_coordinates:
-            coords = np.array(arena_coordinates[cam_name])
-            arena_arrays.append(coords)
-        else:
-            raise ValueError(f"Camera {cam_name} not found in arena coordinates")
-    
+    for view_name in view_names:
+        coords = np.array(arena_coordinates[view_name])
+        arena_arrays.append(coords)
+
+    # CAREFUL! Some arbitrary shaping of the array is happening at this level, to ensure 
+    # that loaded stuff is interpreted correctly
     # Stack arrays to create (1, 2, n_keypoints, 1) array
-    arena_data = np.stack(arena_arrays, axis=0).swapaxes(1, 2)[:, np.newaxis, :, :, np.newaxis]
+    arena_data = np.stack(arena_arrays, axis=0).swapaxes(1, 2)[:, np.newaxis, :, :, np.newaxis][:, :, [1, 0], :, :]
+    print(arena_data.shape)
 
     # Create keypoint names (arena corners)
     n_keypoints = 8
@@ -72,14 +76,13 @@ def create_arena_dataset(arena_coordinates: dict, cam_names: list) -> xr.Dataset
     # Create dataset
     print(keypoint_names)
     print(arena_data.shape)
-    print(cam_names)
     ds = xr.Dataset(
         {
             'position': xr.DataArray(
                 arena_data,
                 dims=['view', 'time', 'space', 'keypoints', 'individuals'],
                 coords={
-                    'view': cam_names,
+                    'view': view_names,
                     'time': [0],
                     'space': ['x', 'y'],
                     'keypoints': keypoint_names,
@@ -90,7 +93,7 @@ def create_arena_dataset(arena_coordinates: dict, cam_names: list) -> xr.Dataset
                 np.ones_like(arena_data)[:, :, 0, :, :],
                 dims=['view', 'time', 'keypoints', 'individuals'],
                 coords={
-                    'view': cam_names,
+                    'view': view_names,
                     'time': [0],
                     'keypoints': keypoint_names,
                     'individuals': ['arena']
@@ -101,11 +104,13 @@ def create_arena_dataset(arena_coordinates: dict, cam_names: list) -> xr.Dataset
     
     ds.attrs['source_software'] = 'arena_coordinates'
     ds.attrs['individuals'] = ['arena']
+
+    print(ds)
     
     return ds
 
 
-def triangulate_arena(arena_coordinates: dict, calib_toml_path: Path) -> xr.Dataset:
+def triangulate_arena(arena_multiview_ds: dict, calib_toml_path: Path) -> xr.Dataset:
     """
     Triangulate arena points using calibration data.
     
@@ -127,8 +132,7 @@ def triangulate_arena(arena_coordinates: dict, calib_toml_path: Path) -> xr.Data
     cam_names, _, _, _ = read_calibration_toml(calib_toml_path)
     
     # Create arena dataset
-    arena_2d_ds = create_arena_dataset(arena_coordinates, cam_names)
-    print(arena_2d_ds, arena_2d_ds.position.shape)
+    # arena_2d_ds = load_arena_multiview_ds(arena_coordinates, cam_names)
     
     # Triangulate using anipose
     triang_config = {
@@ -144,21 +148,23 @@ def triangulate_arena(arena_coordinates: dict, calib_toml_path: Path) -> xr.Data
     cgroup = CameraGroup.load(calib_fname)
     
     # Prepare data for triangulation
-    positions = arena_2d_ds.position.values  # (n_views, n_keypoints, 2)
-    scores = arena_2d_ds.confidence.values   # (n_views, n_keypoints)
+    positions = arena_multiview_ds.position.values  # (n_views, n_keypoints, 2)
+    scores = arena_multiview_ds.confidence.values   # (n_views, n_keypoints)
     
+    print(arena_multiview_ds)
     # Triangulate
     arena_3d_ds = anipose_triangulate_ds(
-        arena_2d_ds, 
+        arena_multiview_ds, 
         calib_toml_path, 
         **triang_config, 
     )
+    print("Triangulated!")
 
     return arena_3d_ds
 
 
 # def get_arena_points_from_dataset(arena_ds: xr.Dataset, time_idx: int = 0) -> np.ndarray:
-def get_triangulated_arena_ds(arena_points_json_path: Path, calib_toml_path: Path) -> xr.Dataset:
+def load_and_triangulate_arena_ds(arena_points_json_path: Path, calib_toml_path: Path) -> xr.Dataset:
     """
     Extract arena points from dataset for plotting.
     
@@ -174,9 +180,9 @@ def get_triangulated_arena_ds(arena_points_json_path: Path, calib_toml_path: Pat
     np.ndarray
         Array of arena points with shape (n_points, 3)
     """
-    arena_coordinates = load_arena_coordinates(arena_points_json_path)
+    arena_multiview_ds = load_arena_multiview_ds(arena_points_json_path)
     # arena_ds = create_arena_dataset(arena_coordinates, calib_toml_path)
-    arena_3d_ds = triangulate_arena(arena_coordinates, calib_toml_path)
+    arena_3d_ds = triangulate_arena(arena_multiview_ds, calib_toml_path)
     return arena_3d_ds
 
 
@@ -250,9 +256,9 @@ def get_arena_points_from_dataset(arena_ds: xr.Dataset, time_idx: int = 0) -> np
 
 
 def create_arena_mouse_animation(mouse_ds: xr.Dataset, arena_ds: xr.Dataset,
-                               start_time: int = 0, end_time: int = None,
-                               individual_idx: int = 0, interval: int = 100,
-                               save_path: Path = None):
+                                start_time: int = 0, end_time: int = None,
+                                individual_idx: int = 0, interval: int = 100,
+                                save_path: Path = None):
     """
     Create animation showing arena and mouse movement.
     
@@ -334,3 +340,23 @@ def create_arena_mouse_animation(mouse_ds: xr.Dataset, arena_ds: xr.Dataset,
         anim.save(save_path, writer='ffmpeg', fps=30)
     
     return anim 
+
+
+if __name__ == "__main__":
+    arena_json_path = Path("/Users/vigji/Desktop/test_3d/multicam_video_2025-05-07T10_12_11_20250528-153946.json")
+    calib_toml_path = Path("/Users/vigji/Desktop/test_3d/Calibration/20250509/multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328/mc_calibration_output_20250710-152443/calibration_from_mc.toml")
+    
+    arena_multiview_ds = load_arena_multiview_ds(arena_json_path)
+    arena_ds = load_and_triangulate_arena_ds(arena_json_path, calib_toml_path)
+    print(arena_ds)
+    for view in arena_multiview_ds.coords['view'].values:
+        sel_view = arena_multiview_ds.sel(view=view)
+        print(view, ": ")
+        print(sel_view.position.values)
+
+    from matplotlib import pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(arena_ds.position.sel(space='x').values, arena_ds.position.sel(space='y').values, arena_ds.position.sel(space='z').values)
+    plt.show()
