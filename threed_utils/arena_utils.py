@@ -55,7 +55,7 @@ def load_arena_multiview_ds(arena_json_path: Path) -> xr.Dataset:
         Dataset containing arena coordinates with dimensions (view, keypoints, space)
     """
     arena_coordinates = load_arena_coordinates(arena_json_path)
-    print(arena_coordinates)
+
     # Convert arena coordinates to arrays
     view_names = sorted(arena_coordinates.keys())
     arena_arrays = []
@@ -67,15 +67,12 @@ def load_arena_multiview_ds(arena_json_path: Path) -> xr.Dataset:
     # that loaded stuff is interpreted correctly
     # Stack arrays to create (1, 2, n_keypoints, 1) array
     arena_data = np.stack(arena_arrays, axis=0).swapaxes(1, 2)[:, np.newaxis, :, :, np.newaxis][:, :, [1, 0], :, :]
-    print(arena_data.shape)
 
     # Create keypoint names (arena corners)
     n_keypoints = 8
     keypoint_names = [f"arena_corner_{i}" for i in range(n_keypoints)]
     
     # Create dataset
-    print(keypoint_names)
-    print(arena_data.shape)
     ds = xr.Dataset(
         {
             'position': xr.DataArray(
@@ -105,7 +102,6 @@ def load_arena_multiview_ds(arena_json_path: Path) -> xr.Dataset:
     ds.attrs['source_software'] = 'arena_coordinates'
     ds.attrs['individuals'] = ['arena']
 
-    print(ds)
     
     return ds
 
@@ -151,14 +147,12 @@ def triangulate_arena(arena_multiview_ds: dict, calib_toml_path: Path) -> xr.Dat
     positions = arena_multiview_ds.position.values  # (n_views, n_keypoints, 2)
     scores = arena_multiview_ds.confidence.values   # (n_views, n_keypoints)
     
-    print(arena_multiview_ds)
     # Triangulate
     arena_3d_ds = anipose_triangulate_ds(
         arena_multiview_ds, 
         calib_toml_path, 
         **triang_config, 
     )
-    print("Triangulated!")
 
     return arena_3d_ds
 
@@ -342,21 +336,321 @@ def create_arena_mouse_animation(mouse_ds: xr.Dataset, arena_ds: xr.Dataset,
     return anim 
 
 
+def apply_affine_transformation(ds: xr.Dataset, transformation_matrix: np.ndarray) -> xr.Dataset:
+    """
+    Apply a 3D affine transformation to a triangulated dataset.
+    
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset containing triangulated 3D points with dimensions (time, space, keypoints, individuals)
+    transformation_matrix : np.ndarray
+        4x4 affine transformation matrix
+        
+    Returns
+    -------
+    xarray.Dataset
+        Transformed dataset with the same structure as input
+    """
+    # Extract positions and convert to homogeneous coordinates
+    positions = ds.position.values  # (time, space, keypoints, individuals)
+    
+    # Reshape to (n_points, 4) for homogeneous coordinates
+    n_time, n_space, n_keypoints, n_individuals = positions.shape
+    n_points = n_time * n_keypoints * n_individuals
+    
+    # Stack all points and add homogeneous coordinate
+    points_flat = positions.transpose(0, 2, 3, 1).reshape(n_points, 3)
+    points_homogeneous = np.column_stack([points_flat, np.ones(n_points)])
+    
+    # Apply transformation
+    transformed_points_homogeneous = points_homogeneous @ transformation_matrix.T
+    
+    # Remove homogeneous coordinate and reshape back
+    transformed_points = transformed_points_homogeneous[:, :3]
+    transformed_positions = transformed_points.reshape(n_time, n_keypoints, n_individuals, 3).transpose(0, 3, 1, 2)
+    
+    # Create new dataset with transformed positions
+    transformed_ds = ds.copy()
+    transformed_ds['position'] = xr.DataArray(
+        transformed_positions,
+        dims=['time', 'space', 'keypoints', 'individuals'],
+        coords=ds.position.coords
+    )
+    
+    return transformed_ds
+
+
+def find_orthogonal_affine_transformation(arena_ds: xr.Dataset, 
+                                        origin_corner: str = "arena_corner_0",
+                                        x_axis_points: tuple = ("arena_corner_0", "arena_corner_1"),
+                                        y_axis_points: tuple = ("arena_corner_0", "arena_corner_3"),
+                                        z_axis_points: tuple = ("arena_corner_0", "arena_corner_4")) -> np.ndarray:
+    """
+    Find an affine transformation that makes arena axes orthogonal while preserving volumes.
+    
+    Parameters
+    ----------
+    arena_ds : xarray.Dataset
+        Dataset containing triangulated arena points
+    origin_corner : str, optional
+        Name of the corner to use as origin (default: "arena_corner_0")
+    x_axis_points : tuple, optional
+        Tuple of two corner names defining the x-axis direction (default: ("arena_corner_0", "arena_corner_1"))
+    y_axis_points : tuple, optional
+        Tuple of two corner names defining the y-axis direction (default: ("arena_corner_0", "arena_corner_3"))
+    z_axis_points : tuple, optional
+        Tuple of two corner names defining the z-axis direction (default: ("arena_corner_0", "arena_corner_4"))
+        
+    Returns
+    -------
+    np.ndarray
+        4x4 affine transformation matrix
+    """
+    # Extract points for each axis - take first time point and first individual
+    individual = 'checkerboard'
+    origin_point = arena_ds.position.sel(keypoints=origin_corner, time=0, individuals=individual).values
+    x_start = arena_ds.position.sel(keypoints=x_axis_points[0], time=0, individuals=individual).values
+    x_end = arena_ds.position.sel(keypoints=x_axis_points[1], time=0, individuals=individual).values
+    y_start = arena_ds.position.sel(keypoints=y_axis_points[0], time=0, individuals=individual).values
+    y_end = arena_ds.position.sel(keypoints=y_axis_points[1], time=0, individuals=individual).values
+    z_start = arena_ds.position.sel(keypoints=z_axis_points[0], time=0, individuals=individual).values
+    z_end = arena_ds.position.sel(keypoints=z_axis_points[1], time=0, individuals=individual).values
+    
+    # Calculate direction vectors
+    x_dir = x_end - x_start
+    y_dir = y_end - y_start
+    z_dir = z_end - z_start
+    
+    # Normalize primary axis (x)
+    x_axis = x_dir / np.linalg.norm(x_dir)
+    # Orthogonalize y to x
+    y_axis = y_dir - np.dot(y_dir, x_axis) * x_axis
+    y_axis = y_axis / np.linalg.norm(y_axis)
+    # Compute z as right-handed cross product
+    z_axis = np.cross(x_axis, y_axis)
+    z_axis = z_axis / np.linalg.norm(z_axis)
+    # Re-orthogonalize y to z (optional, for numerical stability)
+    y_axis = np.cross(z_axis, x_axis)
+    y_axis = y_axis / np.linalg.norm(y_axis)
+    # Build orthogonal basis (current arena axes)
+    arena_basis = np.column_stack([x_axis, y_axis, z_axis])
+    # Target basis is the standard coordinate system
+    target_basis = np.eye(3)  # (1,0,0), (0,1,0), (0,0,1)
+    # Compute rotation that maps arena basis to target basis
+    # R * arena_basis = target_basis, so R = target_basis * arena_basis^(-1)
+    R = target_basis @ np.linalg.inv(arena_basis)
+    # Scale to preserve volume
+    current_volume = np.abs(np.linalg.det(arena_basis))
+    target_volume = np.abs(np.linalg.det(target_basis))
+    scale_factor = (current_volume / target_volume) ** (1/3)
+    R = R * scale_factor
+    # Build affine transformation: rotate to align with standard axes, then translate origin to (0,0,0)
+    transformation_matrix = np.eye(4)
+    transformation_matrix[:3, :3] = R
+    transformation_matrix[:3, 3] = -R @ origin_point
+    return transformation_matrix
+
+
+def find_optimal_affine_transformation(arena_ds: xr.Dataset, 
+                                     origin_corner: str = "arena_corner_0",
+                                     x_axis_points: tuple = ("arena_corner_0", "arena_corner_1"),
+                                     y_axis_points: tuple = ("arena_corner_0", "arena_corner_3"),
+                                     z_axis_points: tuple = ("arena_corner_0", "arena_corner_4")) -> np.ndarray:
+    """
+    Find optimal affine transformation that minimizes angles between arena axes and standard coordinate axes.
+    Uses least squares to find the best affine fit, allowing non-rigid transformations.
+    
+    Parameters
+    ----------
+    arena_ds : xarray.Dataset
+        Dataset containing triangulated arena points
+    origin_corner : str, optional
+        Name of the corner to use as origin (default: "arena_corner_0")
+    x_axis_points : tuple, optional
+        Tuple of two corner names defining the x-axis direction (default: ("arena_corner_0", "arena_corner_1"))
+    y_axis_points : tuple, optional
+        Tuple of two corner names defining the y-axis direction (default: ("arena_corner_0", "arena_corner_3"))
+    z_axis_points : tuple, optional
+        Tuple of two corner names defining the z-axis direction (default: ("arena_corner_0", "arena_corner_4"))
+        
+    Returns
+    -------
+    np.ndarray
+        4x4 affine transformation matrix
+    """
+    # Extract all arena points for the first time and individual
+    individual = 'checkerboard'
+    origin_point = arena_ds.position.sel(keypoints=origin_corner, time=0, individuals=individual).values
+    
+    # Get all arena points
+    all_points = []
+    target_points = []
+    
+    # Extract all keypoints
+    for i in range(8):  # 8 arena corners
+        keypoint_name = f"arena_corner_{i}"
+        point = arena_ds.position.sel(keypoints=keypoint_name, time=0, individuals=individual).values
+        all_points.append(point)
+    
+    all_points = np.array(all_points)  # Shape: (8, 3)
+    
+    # Define target positions in standard coordinate system
+    # Create a cube-like structure centered at origin
+    target_points = np.array([
+        [0, 0, 0],    # origin (arena_corner_0)
+        [1, 0, 0],    # x-axis (arena_corner_1)
+        [1, 1, 0],    # xy-plane (arena_corner_2)
+        [0, 1, 0],    # y-axis (arena_corner_3)
+        [0, 0, 1],    # z-axis (arena_corner_4)
+        [1, 0, 1],    # xz-plane (arena_corner_5)
+        [1, 1, 1],    # xyz (arena_corner_6)
+        [0, 1, 1],    # yz-plane (arena_corner_7)
+    ])
+    
+    # Scale target points to match the scale of arena points
+    arena_scale = np.max(np.linalg.norm(all_points - all_points[0], axis=1))
+    target_scale = np.max(np.linalg.norm(target_points - target_points[0], axis=1))
+    scale_factor = arena_scale / target_scale
+    target_points = target_points * scale_factor
+    
+    # Solve for affine transformation using least squares
+    # We need to solve: A * [points; 1] = target_points
+    # This gives us the affine transformation matrix A
+    
+    # Add homogeneous coordinate
+    points_homogeneous = np.column_stack([all_points, np.ones(len(all_points))])
+    
+    # Solve least squares: A * points_homogeneous.T = target_points.T
+    # A = target_points.T @ points_homogeneous @ inv(points_homogeneous.T @ points_homogeneous)
+    A = target_points.T @ points_homogeneous @ np.linalg.inv(points_homogeneous.T @ points_homogeneous)
+    
+    # A is 3x4, we need 4x4 affine matrix
+    transformation_matrix = np.eye(4)
+    transformation_matrix[:3, :] = A
+    
+    return transformation_matrix
+
+
 if __name__ == "__main__":
     arena_json_path = Path("/Users/vigji/Desktop/test_3d/multicam_video_2025-05-07T10_12_11_20250528-153946.json")
     calib_toml_path = Path("/Users/vigji/Desktop/test_3d/Calibration/20250509/multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328/mc_calibration_output_20250710-152443/calibration_from_mc.toml")
     
     arena_multiview_ds = load_arena_multiview_ds(arena_json_path)
     arena_ds = load_and_triangulate_arena_ds(arena_json_path, calib_toml_path)
-    print(arena_ds)
-    for view in arena_multiview_ds.coords['view'].values:
-        sel_view = arena_multiview_ds.sel(view=view)
-        print(view, ": ")
-        print(sel_view.position.values)
 
     from matplotlib import pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(arena_ds.position.sel(space='x').values, arena_ds.position.sel(space='y').values, arena_ds.position.sel(space='z').values)
+    
+    # Plot original arena
+    fig = plt.figure(figsize=(15, 5))
+    
+    # Original arena
+    ax1 = fig.add_subplot(131, projection='3d')
+    ax1.scatter(arena_ds.position.sel(space='x').values, arena_ds.position.sel(space='y').values, arena_ds.position.sel(space='z').values, c='lightgray', s=5, alpha=0.8, label='Arena')
+    
+    # Define axis edges
+    ax_edges = dict(x=["arena_corner_0", "arena_corner_1"], 
+                    y=["arena_corner_0", "arena_corner_3"], 
+                    z=["arena_corner_0", "arena_corner_4"])
+
+    for ax_col, (ax_name, ax_edge) in zip(["r", "g", "b"], ax_edges.items()):
+        sel_arena_corner = arena_ds.position.sel(keypoints=ax_edge[0])
+        sel_arena_corner_2 = arena_ds.position.sel(keypoints=ax_edge[1])
+        ax1.plot([sel_arena_corner.sel(space="x").values, sel_arena_corner_2.sel(space="x").values], 
+                [sel_arena_corner.sel(space="y").values, sel_arena_corner_2.sel(space="y").values], 
+                [sel_arena_corner.sel(space="z").values, sel_arena_corner_2.sel(space="z").values], 
+                c=ax_col, label=f"Arena edge {ax_name}")
+    ax1.legend()
+    ax1.set_title("Original Arena")
+    
+    # Find orthogonal transformation
+    transformation_matrix = find_orthogonal_affine_transformation(arena_ds)
+    
+    # Apply transformation
+    transformed_arena_ds = apply_affine_transformation(arena_ds, transformation_matrix)
+    
+    # Find optimal affine transformation (non-rigid)
+    optimal_transformation_matrix = find_optimal_affine_transformation(arena_ds)
+    
+    # Apply optimal transformation
+    optimal_transformed_arena_ds = apply_affine_transformation(arena_ds, optimal_transformation_matrix)
+    
+    # Plot transformed arena (orthogonal)
+    ax2 = fig.add_subplot(132, projection='3d')
+    ax2.scatter(transformed_arena_ds.position.sel(space='x').values, transformed_arena_ds.position.sel(space='y').values, transformed_arena_ds.position.sel(space='z').values, c='lightgray', s=5, alpha=0.8, label='Orthogonalized Arena')
+    
+    for ax_col, (ax_name, ax_edge) in zip(["r", "g", "b"], ax_edges.items()):
+        sel_arena_corner = transformed_arena_ds.position.sel(keypoints=ax_edge[0])
+        sel_arena_corner_2 = transformed_arena_ds.position.sel(keypoints=ax_edge[1])
+        ax2.plot([sel_arena_corner.sel(space="x").values, sel_arena_corner_2.sel(space="x").values], 
+                [sel_arena_corner.sel(space="y").values, sel_arena_corner_2.sel(space="y").values], 
+                [sel_arena_corner.sel(space="z").values, sel_arena_corner_2.sel(space="z").values], 
+                c=ax_col, label=f"Arena edge {ax_name}")
+    ax2.legend()
+    ax2.set_title("Orthogonalized Arena")
+    
+    # Plot optimal transformed arena (non-rigid)
+    ax3 = fig.add_subplot(133, projection='3d')
+    ax3.scatter(optimal_transformed_arena_ds.position.sel(space='x').values, optimal_transformed_arena_ds.position.sel(space='y').values, optimal_transformed_arena_ds.position.sel(space='z').values, c='lightgray', s=5, alpha=0.8, label='Optimal Transformed Arena')
+    
+    for ax_col, (ax_name, ax_edge) in zip(["r", "g", "b"], ax_edges.items()):
+        sel_arena_corner = optimal_transformed_arena_ds.position.sel(keypoints=ax_edge[0])
+        sel_arena_corner_2 = optimal_transformed_arena_ds.position.sel(keypoints=ax_edge[1])
+        ax3.plot([sel_arena_corner.sel(space="x").values, sel_arena_corner_2.sel(space="x").values], 
+                [sel_arena_corner.sel(space="y").values, sel_arena_corner_2.sel(space="y").values], 
+                [sel_arena_corner.sel(space="z").values, sel_arena_corner_2.sel(space="z").values], 
+                c=ax_col, label=f"Arena edge {ax_name}")
+    ax3.legend()
+    ax3.set_title("Optimal Affine Transform")
+    
+    plt.tight_layout()
     plt.show()
+    
+    # Print transformation matrices
+    print("Orthogonal transformation matrix:")
+    print(transformation_matrix)
+    print("\nOptimal transformation matrix:")
+    print(optimal_transformation_matrix)
+    
+    # Verify orthogonality for both transformations
+    print("\nVerifying orthogonality:")
+    x_dir_orig = arena_ds.position.sel(keypoints="arena_corner_1").values - arena_ds.position.sel(keypoints="arena_corner_0").values
+    y_dir_orig = arena_ds.position.sel(keypoints="arena_corner_3").values - arena_ds.position.sel(keypoints="arena_corner_0").values
+    z_dir_orig = arena_ds.position.sel(keypoints="arena_corner_4").values - arena_ds.position.sel(keypoints="arena_corner_0").values
+    
+    x_dir_trans = transformed_arena_ds.position.sel(keypoints="arena_corner_1").values - transformed_arena_ds.position.sel(keypoints="arena_corner_0").values
+    y_dir_trans = transformed_arena_ds.position.sel(keypoints="arena_corner_3").values - transformed_arena_ds.position.sel(keypoints="arena_corner_0").values
+    z_dir_trans = transformed_arena_ds.position.sel(keypoints="arena_corner_4").values - transformed_arena_ds.position.sel(keypoints="arena_corner_0").values
+    
+    x_dir_opt = optimal_transformed_arena_ds.position.sel(keypoints="arena_corner_1").values - optimal_transformed_arena_ds.position.sel(keypoints="arena_corner_0").values
+    y_dir_opt = optimal_transformed_arena_ds.position.sel(keypoints="arena_corner_3").values - optimal_transformed_arena_ds.position.sel(keypoints="arena_corner_0").values
+    z_dir_opt = optimal_transformed_arena_ds.position.sel(keypoints="arena_corner_4").values - optimal_transformed_arena_ds.position.sel(keypoints="arena_corner_0").values
+    
+    # Normalize
+    x_dir_orig = x_dir_orig / np.linalg.norm(x_dir_orig)
+    y_dir_orig = y_dir_orig / np.linalg.norm(y_dir_orig)
+    z_dir_orig = z_dir_orig / np.linalg.norm(z_dir_orig)
+    x_dir_trans = x_dir_trans / np.linalg.norm(x_dir_trans)
+    y_dir_trans = y_dir_trans / np.linalg.norm(y_dir_trans)
+    z_dir_trans = z_dir_trans / np.linalg.norm(z_dir_trans)
+    x_dir_opt = x_dir_opt / np.linalg.norm(x_dir_opt)
+    y_dir_opt = y_dir_opt / np.linalg.norm(y_dir_opt)
+    z_dir_opt = z_dir_opt / np.linalg.norm(z_dir_opt)
+    
+    print(f"Original dot products: x·y={np.dot(x_dir_orig, y_dir_orig):.6f}, x·z={np.dot(x_dir_orig, z_dir_orig):.6f}, y·z={np.dot(y_dir_orig, z_dir_orig):.6f}")
+    print(f"Orthogonalized dot products: x·y={np.dot(x_dir_trans, y_dir_trans):.6f}, x·z={np.dot(x_dir_trans, z_dir_trans):.6f}, y·z={np.dot(y_dir_trans, z_dir_trans):.6f}")
+    print(f"Optimal affine dot products: x·y={np.dot(x_dir_opt, y_dir_opt):.6f}, x·z={np.dot(x_dir_opt, z_dir_opt):.6f}, y·z={np.dot(y_dir_opt, z_dir_opt):.6f}")
+    
+    # Check alignment with standard axes
+    standard_x = np.array([1, 0, 0])
+    standard_y = np.array([0, 1, 0])
+    standard_z = np.array([0, 0, 1])
+    
+    print(f"\nAlignment with standard axes:")
+    print(f"Orthogonalized - x alignment: {np.abs(np.dot(x_dir_trans, standard_x)):.6f}")
+    print(f"Orthogonalized - y alignment: {np.abs(np.dot(y_dir_trans, standard_y)):.6f}")
+    print(f"Orthogonalized - z alignment: {np.abs(np.dot(z_dir_trans, standard_z)):.6f}")
+    print(f"Optimal affine - x alignment: {np.abs(np.dot(x_dir_opt, standard_x)):.6f}")
+    print(f"Optimal affine - y alignment: {np.abs(np.dot(y_dir_opt, standard_y)):.6f}")
+    print(f"Optimal affine - z alignment: {np.abs(np.dot(z_dir_opt, standard_z)):.6f}")
