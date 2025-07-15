@@ -22,7 +22,7 @@ def _write_config(project_name, scorer, output_dir, bodyparts, skeleton):
         "scorer": scorer,
         "date": time.strftime("%Y-%m-%d"),
         "identity": None,
-        "project_path": output_dir,
+        "project_path": str(output_dir),
         "engine": "pytorch",
         "video_sets": {},
         "start": 0,
@@ -193,6 +193,7 @@ def convert_slep_to_dlc(
             video_folder / f"CollectedData_{scorer}.csv", index=True, header=True
         )
         df_sub.to_pickle(video_folder / f"CollectedData_{scorer}.pkl")
+        # df_sub.to_hdf(video_folder / f"CollectedData_{scorer}.h5", key="df", mode="w")
 
     _write_config(project_name, scorer, output_dir, bodyparts, skeleton)
 
@@ -232,3 +233,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     convert_slep_to_dlc(args.slp_file, args.output_dir, args.project_name, args.scorer)
+
+#### Fix to have hd files, out of sleap env:
+from pathlib import Path
+from pprint import pprint
+import pandas as pd
+path = r"D:\luigi\sleap_dlc_conversion"
+path = Path(path)
+all_files = list(path.glob("*/labeled-data/*/*.pkl"))
+pprint(all_files)
+
+for file in all_files:
+    df = pd.read_pickle(file)
+    # Save as hdf5
+    hdf5_path = file.with_suffix(".h5")
+    df.to_hdf(hdf5_path, key="df", mode="w")
+    print(f"Saved {file} to {hdf5_path}")

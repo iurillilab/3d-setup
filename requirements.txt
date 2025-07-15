@@ -2,3 +2,8 @@ numpy
 pandas
 napari
 movement
+PyYAML
+vidio
+flammkuchen
+toml
+aniposelib
