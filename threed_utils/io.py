@@ -163,6 +163,12 @@ def get_pose_files_dict(dir_path: str | Path, expected_views: tuple[str], softwa
     return file_path_dict
 
 
+def sanitize_keypoints(ds: xr.Dataset):
+    if set(map(lambda x: str(x), ds.coords["keypoints"].values)) == set(KP_MAPPING_FIX.keys()):
+        ds.coords["keypoints"] = xr.DataArray([KP_MAPPING_FIX[str(k)] for k in ds.coords["keypoints"].values], dims="keypoints")
+    print(ds.coords["keypoints"].values)
+    return ds
+
 def from_multiview_files(
     file_path_dict: dict[str, Path | str],
     source_software: str,
@@ -175,11 +181,7 @@ def from_multiview_files(
         for f in file_path_dict.values()
     ]
     for ds in dataset_list:
-        print("===================")
-        print(set(map(lambda x: str(x), ds.coords["keypoints"].values)))
-        print(set(map(lambda x: str(x), KP_MAPPING_FIX.keys())))
-        if set(map(lambda x: str(x), ds.coords["keypoints"].values)) == set(map(lambda x: str(x), KP_MAPPING_FIX.keys())):
-            ds.coords["keypoints"] = xr.DataArray([KP_MAPPING_FIX[str(k)] for k in ds.coords["keypoints"].values], dims="keypoints")
+        ds = sanitize_keypoints(ds)
     return xr.concat(dataset_list, dim=new_coord_views)
 
 
@@ -211,25 +213,13 @@ def load_triangulated_ds(save_path: Path):
     ds = xr.open_dataset(save_path)
     # TODO save in the file
     ds.attrs['skeleton'] = SKELETON
+    ds = sanitize_keypoints(ds)
     return ds
 
 
 if __name__ == "__main__":
-    data_path = "/Users/vigji/Desktop/test_3d/M29/20250507/cricket/133050/multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021"
-    ds = create_2d_ds(data_path, ("central", "mirror-bottom", "mirror-left", "mirror-right", "mirror-top"), "DeepLabCut")
-    print(ds.coords["keypoints"].values)
-    print(ds.position.shape)
-
-    from matplotlib import pyplot as plt
-    plt.figure()
-    time_i = 50
-    view = "central"
-    for i in range(100):
-        sel_ds = ds.sel(view=view, time=time_i+i)
-        for j,kp in enumerate(sel_ds.coords["keypoints"].values):
-            if j < 3:
-                continue
-            plt.scatter(sel_ds.position.sel(space="x", keypoints=kp), sel_ds.position.sel(space="y", keypoints=kp), 
-                        label=kp if i == 0 else "__nolegend__", c=f"C{j}")
-    plt.legend()
-    plt.show()
+    data_path = Path("/Users/vigji/Desktop/test_3d/M29/20250507/cricket/133050/multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021/multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021_triangulated_points_20250730-215649.h5")
+    bottom_view_ds = from_file(next(data_path.parent.glob("*mouse-bottom*.h5")), source_software="DeepLabCut")
+    bottom_view_ds = sanitize_keypoints(bottom_view_ds)
+    print(bottom_view_ds.coords["keypoints"].values)
+    print(bottom_view_ds.position.shape)

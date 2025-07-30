@@ -1,89 +1,111 @@
-#%%
+# %%
+%matplotlib widget
 from pathlib import Path
-from movement.io.save_poses import to_dlc_file
-import xarray as xr
+import napari
+from threed_utils.detection_napari_check import view_movement_3d
+from threed_utils.io import load_triangulated_ds, sanitize_keypoints
+from movement.io.load_poses import from_file
+from matplotlib import pyplot as plt
+import numpy as np
 
 
-# get all the directries with triangulated_points.h5 files and save new _dlc.h5 files for each one of them inside the dir
+data_path = Path("/Users/vigji/Desktop/test_3d/M29/20250507/cricket/133050/multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021/multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021_triangulated_points_20250730-215649.h5")
+bottom_view_ds = from_file(next(data_path.parent.glob("*mouse-bottom*.h5")), source_software="DeepLabCut")
+triang_ds = load_triangulated_ds(data_path)
 
+bottom_view_ds = bottom_view_ds.sel(time=slice(0, triang_ds.time.isel(time=-1)))
+bottom_view_ds = sanitize_keypoints(bottom_view_ds)
 
-# main_dir = r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting"
-# # main_dir = r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\test_cropping\try_model"
-# # save_dir = r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\data_newm"
-# save_dir = r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\dlc_3d_data"
-# files = []
-# for dir in Path(main_dir).rglob("*"):
-#     if dir.is_dir():
-# #         for file in dir.rglob("*_triangulated_points.h5"):
-#             files.append(file)
-# files_set = set(files)
-
-# print(files_set)
-
-# for file in list(files_set):
-#     data = xr.open_dataset(file)
-#     to_dlc_file(data, Path(save_dir).with_name(Path(file).stem + "_dlc.h5"))
-#     print('File saved:', Path(save_dir).with_name(Path(file).stem + "_dlc.h5"))
-# print(f"converted {len(files_set)} files")
-
-def find_dirs_with_matching_views(root_dir: Path) -> list[Path]:
-    """
-    Find directories containing exactly 5 SLP files with matching camera views.
-    """
-    valid_dirs = []
-
-    all_candidate_folders = [f for f in root_dir.rglob("multicam_video_*_cropped_*") if f.is_dir()]
-    parent_dict = {folder.parent: [] for folder in all_candidate_folders}
+# Process x and y coordinates separately: subtract min and scale to match triangulated data
+for space_coord in ['x', 'y']:
+    # Subtract min from bottom_view_ds for this coordinate
+    bottom_coord_data = bottom_view_ds.position.sel(space=space_coord)
+    triang_coord_data = triang_ds.position.sel(space=space_coord)
+    bottom_min = np.min(triang_coord_data.values)
     
-    for candidate_folder in all_candidate_folders:
-        parent_dict[candidate_folder.parent].append(candidate_folder)
+    # Scale to match triangulated data range
+    bottom_range = np.ptp(bottom_view_ds.position.sel(space=space_coord).values)
+    triang_range = np.ptp(triang_ds.position.sel(space=space_coord).values)
+    if bottom_range > 0:  # Avoid division by zero
+        scale_factor = triang_range / bottom_range
+        bottom_view_ds.position.loc[dict(space=space_coord)] *= scale_factor
+        bottom_view_ds.position.loc[dict(space=space_coord)] += bottom_min
+
+# %%
+plt.figure()
+time_int_slice = slice(0, 10000)
+for kp in "hindpaw_lf", "hindpaw_rt":
+    for ds in [bottom_view_ds, triang_ds]:
+        plt.scatter(ds.position.sel(keypoints=kp, space="x", time=time_int_slice), 
+                    ds.position.sel(keypoints=kp, space="y", time=time_int_slice), 
+                    s=10)
+plt.show()
+
+# %%
+
+# Function to compute angle between two vectors
+def compute_angle_between_vectors(v1, v2):
+    """Compute angle between two vectors in degrees"""
+    # Normalize vectors
+    v1_norm = v1 / np.linalg.norm(v1, axis=0)
+    v2_norm = v2 / np.linalg.norm(v2, axis=0)
     
-    last_folders = [sorted(folders)[-1] for folders in parent_dict.values()]
-
-
-    for directory in last_folders:    
-        #if not directory.is_dir():
-        #    continue
-
-        if "calibration" in [parent.name.lower() for parent in directory.parents]:
-            continue
-        # Get all SLP files in the current directory
-        slp_files = list(directory.glob('*.slp'))
-
-        if  len(list(directory.glob("*triangulated_points_*.h5"))) < 0:
-            continue
-        
-        for h5 in directory.glob("*triangulated_points_*.h5"):
-            if not h5.is_file():
-                continue
-            valid_dirs.append(h5)
-    valid_dirs.reverse() # to avoid possible error 
-    return valid_dirs
-
-def convert_h5_to_dlc(h5_files: list[Path], save_dir: Path) -> None:
-    """
-    Convert the given h5 files to DLC format and save them.
+    # Compute dot product
+    dot_product = np.sum(v1_norm * v2_norm, axis=0)
     
-    Args:
-        h5_files (list[Path]): List of h5 files to convert
-        save_dir (Path): Directory to save the converted files
-    """
-    for h5_file in h5_files:
-        data = xr.open_dataset(h5_file)
-        output_path = Path(save_dir) / f"{h5_file.stem}_dlc.h5"
-        to_dlc_file(data, output_path)
-        print('File saved:', output_path)
-    print(f"Converted {len(h5_files)} files")
+    # Clip to avoid numerical errors
+    dot_product = np.clip(dot_product, -1.0, 1.0)
+    
+    # Compute angle in degrees
+    angles = np.arccos(dot_product) * 180 / np.pi
+    
+    return angles
 
-# Example usage
-if __name__ == "__main__":
-    main_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting")
-    save_dir = Path(r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\dlc_3d_data")
+# Check available keypoints
+print("Available keypoints in triangulated data:")
+print(list(triang_ds.keypoints.values))
+
+# Compute angles between the two lines for both datasets
+datasets = {"triangulated": triang_ds, "bottom_view": bottom_view_ds}
+results = {}
+
+for ds_name, ds in datasets.items():
+    # Get coordinates for line 1: hindpaw_lf to hindpaw_rt
+    hindpaw_lf = ds.position.sel(keypoints="hindpaw_lf", space=["x", "y"]).values.squeeze()
+    hindpaw_rt = ds.position.sel(keypoints="hindpaw_rt", space=["x", "y"]).values.squeeze()
+    line1_vector = hindpaw_rt - hindpaw_lf
     
-    # First find the files
-    h5_files = find_dirs_with_matching_views(main_dir)
-    print("Found files:", len(h5_files))
+    # Get coordinates for line 2: tailbase to belly_caudal
+    tailbase = ds.position.sel(keypoints="tailbase", space=["x", "y"]).values.squeeze()
+    belly_caudal = ds.position.sel(keypoints="belly_caudal", space=["x", "y"]).values.squeeze()
+    line2_vector = belly_caudal - tailbase
+    print(line2_vector.shape, line1_vector.shape)
+    # Compute angles over time
+    angles = compute_angle_between_vectors(line1_vector.T, line2_vector.T)
+    results[ds_name] = angles
     
-    # Then convert them if desired
-    convert_h5_to_dlc(h5_files, save_dir)
+    print(f"\n{ds_name} dataset:")
+    print(f"Mean angle: {np.nanmean(angles):.2f}°")
+    print(f"Std angle: {np.nanstd(angles):.2f}°")
+    print(f"Min angle: {np.nanmin(angles):.2f}°")
+    print(f"Max angle: {np.nanmax(angles):.2f}°")
+
+
+# Plot angles over time
+plt.figure(figsize=(12, 6))
+time_values = triang_ds.time.values
+
+for ds_name, angles in results.items():
+    if angles is not None:
+        plt.plot(time_values[:len(angles)], angles, label=f"{ds_name}", alpha=0.8)
+
+plt.xlabel("Time")
+plt.ylabel("Angle (degrees)")
+plt.title("Angle between hindpaw line and tailbase-belly line over time")
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# %%
+angles.shape
 # %%
