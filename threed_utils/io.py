@@ -219,3 +219,17 @@ if __name__ == "__main__":
     ds = create_2d_ds(data_path, ("central", "mirror-bottom", "mirror-left", "mirror-right", "mirror-top"), "DeepLabCut")
     print(ds.coords["keypoints"].values)
     print(ds.position.shape)
+
+    from matplotlib import pyplot as plt
+    plt.figure()
+    time_i = 50
+    view = "central"
+    for i in range(100):
+        sel_ds = ds.sel(view=view, time=time_i+i)
+        for j,kp in enumerate(sel_ds.coords["keypoints"].values):
+            if j < 3:
+                continue
+            plt.scatter(sel_ds.position.sel(space="x", keypoints=kp), sel_ds.position.sel(space="y", keypoints=kp), 
+                        label=kp if i == 0 else "__nolegend__", c=f"C{j}")
+    plt.legend()
+    plt.show()
