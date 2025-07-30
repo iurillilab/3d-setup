@@ -1,5 +1,5 @@
 import numpy as np
-from movement.io.load_poses import from_file, from_multiview_files, from_numpy
+from movement.io.load_poses import from_file, from_numpy
 import toml
 import xarray as xr
 from datetime import datetime
@@ -24,6 +24,19 @@ SKELETON = [('nose', 'ear_lf'),
                            ('back_mid', 'forepaw_rt'),
                            ('back_rostral', 'forepaw_lf'),
                            ('back_rostral', 'forepaw_rt')]
+
+KP_MAPPING_FIX = {
+                            "nose": "nose",
+                            "Lear": "ear_lf",
+                            "Rear": "forepaw_lf",
+                            "LFlimb": "hindpaw_lf",
+                            "RFlimb": "tailbase",
+                            "Flimbmid": "hindpaw_rt",
+                            "LBlimb": "forepaw_rt",
+                            "RBlimb": "ear_rt",
+                            "Blimbmid": "belly_rostral",
+                            "tailbase": "belly_caudal",
+                        }
 
 def movement_ds_from_anipose_triangulation_df(triang_df, individual_name="checkerboard"):
     """Convert triangulation dataframe to xarray dataset.
@@ -137,23 +150,42 @@ def get_pose_files_dict(dir_path: str | Path, expected_views: tuple[str], softwa
     else:
         raise ValueError(f"Non supported software: {software}")
     tracked_files = sorted(dir_path.glob(f"*mouse*{suffix}"))
-    pprint(tracked_files)
+    # pop files that contain both "side-mouse" and "central" in the name:
+    tracked_files = [f for f in tracked_files if not ("mouse-side" in f.name and "central" in f.name)]
+    # pprint(tracked_files)
 
     file_path_dict = {parsing_function(f.stem): f for f in tracked_files if "triangulated" not in f.name}
     file_path_dict = dict(sorted(file_path_dict.items()))
-    pprint(file_path_dict)
+    # pprint(file_path_dict)
     keys_tuple = tuple(file_path_dict.keys())
-    pprint(keys_tuple)
+    # pprint(keys_tuple)
     assert keys_tuple == expected_views, f"Expected views {expected_views}, got {keys_tuple}"
     return file_path_dict
 
 
-def create_2d_ds(slp_files_dir: Path, expected_views: tuple[str], software: str, max_n_frames: int | None = None):
-    # TODO read fps and skeleton
-    file_path_dict = get_pose_files_dict(slp_files_dir, expected_views, software)
+def from_multiview_files(
+    file_path_dict: dict[str, Path | str],
+    source_software: str,
+    fps: float | None = None,
+) -> xr.Dataset:
+    views_list = list(file_path_dict.keys())
+    new_coord_views = xr.DataArray(views_list, dims="view")
+    dataset_list = [
+        from_file(f, source_software=source_software, fps=fps)
+        for f in file_path_dict.values()
+    ]
+    for ds in dataset_list:
+        print("===================")
+        print(set(map(lambda x: str(x), ds.coords["keypoints"].values)))
+        print(set(map(lambda x: str(x), KP_MAPPING_FIX.keys())))
+        if set(map(lambda x: str(x), ds.coords["keypoints"].values)) == set(map(lambda x: str(x), KP_MAPPING_FIX.keys())):
+            ds.coords["keypoints"] = xr.DataArray([KP_MAPPING_FIX[str(k)] for k in ds.coords["keypoints"].values], dims="keypoints")
+    return xr.concat(dataset_list, dim=new_coord_views)
 
-    # ds.attrs['fps'] = 'fps'
-    
+
+def create_2d_ds(files_dir: Path, expected_views: tuple[str], software: str, max_n_frames: int | None = None):
+    # TODO read fps and skeleton
+    file_path_dict = get_pose_files_dict(files_dir, expected_views, software)    
 
     # views_list = list(file_path_dict.keys())
     ds = from_multiview_files(file_path_dict, source_software=software)
@@ -184,19 +216,6 @@ def load_triangulated_ds(save_path: Path):
 
 if __name__ == "__main__":
     data_path = "/Users/vigji/Desktop/test_3d/M29/20250507/cricket/133050/multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021"
-    from movement.filtering import filter_by_confidence
-    expected_views = tuple(sorted(['mirror-bottom', 'mirror-left', 'mirror-top', 'central', 'mirror-right']))
-    software = "DeepLabCut"
-    
-    ds = create_2d_ds(data_path, expected_views, software)
-
-    ds = filter_by_confidence(ds.position, ds.confidence, threshold=0.5)
-    # save_triangulated_ds(ds, Path(data_path))
-    from matplotlib import pyplot as plt
-
-    sel_central_back = ds.sel(view="central", keypoints="back_caudal")
-    plt.figure()
-    plt.plot(sel_central_back.sel(space="y"), lw=0.5, alpha=1, color="black")
-    sel_central_back = ds.sel(view="central", keypoints="nose")
-    plt.plot(sel_central_back.sel(space="y"), lw=0.5, alpha=1, color="red")
-    plt.show()
+    ds = create_2d_ds(data_path, ("central", "mirror-bottom", "mirror-left", "mirror-right", "mirror-top"), "DeepLabCut")
+    print(ds.coords["keypoints"].values)
+    print(ds.position.shape)

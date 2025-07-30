@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import pandas as pd
-from threed_utils.io import read_calibration_toml
 import matplotlib
 matplotlib.use('Agg') 
 from pathlib import Path
@@ -12,7 +11,7 @@ from tqdm import tqdm
 import multiprocessing
 from pipeline_params import CroppingOptions, KPDetectionOptions
 from threed_utils.io import create_2d_ds, load_calibration, get_pose_files_dict, save_triangulated_ds
-from threed_utils.arena_utils import load_arena_coordinates, triangulate_arena, get_arena_points_from_dataset
+from threed_utils.arena_utils import load_arena_multiview_ds, triangulate_arena, get_arena_points_from_dataset
 from threed_utils.visualization.skeleton_plots import plot_skeleton_3d, set_axes_equal
 from threed_utils.anipose.movement_anipose import anipose_triangulate_ds
 
@@ -60,7 +59,8 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
 def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_views, software, arena_json_path=None):
     """ Worker function to process a single directory. """
     
-    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=3000)
+    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=50)
+    print(valid_dir, ": ", ds.position.shape, ds.coords["keypoints"].values)
     threed_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
     
     threed_ds.attrs['fps'] = 'fps'
@@ -72,9 +72,8 @@ def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_
     if arena_json_path and arena_json_path.exists():
         try:
             # Load and triangulate arena
-            arena_coordinates = load_arena_coordinates(arena_json_path)
-            cam_names, _, _, _ = read_calibration_toml(calib_toml_path)
-            arena_ds = triangulate_arena(arena_coordinates, calib_toml_path, cam_names)
+            arena_coordinates_ds = load_arena_multiview_ds(arena_json_path)
+            arena_ds = triangulate_arena(arena_coordinates_ds, calib_toml_path)
             
             # Create visualization
             arena_points = get_arena_points_from_dataset(arena_ds, 0)
@@ -105,7 +104,7 @@ def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_
     return save_path  # Returning the path for tracking
 
 
-def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, expected_views, software, num_workers=3, arena_json_path=None):
+def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, expected_views, software, num_workers=None, arena_json_path=None):
     """
     Parallelizes triangulation over multiple directories.
 
@@ -117,7 +116,8 @@ def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, exp
     :return: List of saved file paths.
     """
     num_workers = num_workers or min(multiprocessing.cpu_count(), len(valid_dirs))
-
+    print("===================")
+    print(num_workers)
     with multiprocessing.Pool(num_workers) as pool:
         results = list(tqdm(
             pool.starmap(process_directory, 
@@ -134,7 +134,19 @@ if __name__ == "__main__":
     # parser.add_argument("--data_dir", type=str, required=True, help="Path to the directory containing the data")
     # args = parser.parse_args()
     cropping_options = CroppingOptions()
-    main_data_dir = Path("/Users/vigji/Desktop/test_3d") #  Path(args.data_dir)
+    # main_data_dir = Path("/Users/vigji/Desktop/test_3d") #  Path(args.data_dir)
+    main_data_dir = Path("/Volumes/SNeurobiology_RAW/nas_mirror")
+    calibration_dir = main_data_dir / "calibration" / "20250509" / "multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328"
+    arena_json_path = main_data_dir / "calibration" / "cropping_params.json"
+
+    assert arena_json_path.exists()
+
+    from movement.io.load_poses import from_file
+
+    #files = ["/Volumes/SNeurobiology_RAW/nas_mirror/M29/20250513/cricket/101407/multicam_video_2025-05-13T10_34_49_cropped-v2_20250701121021/multicam_video_2025-05-13T10_34_49_centralDLC_HrnetW48_mouse-bottomJul1shuffle1_snapshot_189.h5",
+    #         ]
+
+    
     kp_detection_options = KPDetectionOptions()
     expected_views = {'mirror-bottom', 'mirror-left', 'mirror-top', 'central', 'mirror-right'}
     possible_data_dirs = sorted(list(main_data_dir.glob("M*/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/*/[0-9][0-9][0-9][0-9][0-9][0-9]")))
@@ -159,16 +171,13 @@ if __name__ == "__main__":
     "n_deriv_smooth": 2,
     "reproj_error_threshold": 150,
     "constraints": [['ear_lf','ear_rt'], ['nose','ear_rt'], ['nose','ear_lf'], ['tailbase', 'back_caudal'], ['back_mid', 'back_caudal'], ['back_rostral', 'back_mid']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
-    "constraints_weak": [] #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+    "constraints_weak": []  #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
     }
     print(f"Found {len(valid_dirs)} directories with matching views, and  calibration directories/n Proceeding with calibration")
 
-    calibration_dir = Path("/Users/vigji/Desktop/test_3d/Calibration/20250509/multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328/")
-    
     cam_names, img_sizes, extrinsics, intrinsics, calib_toml_path = load_calibration(calibration_dir)
 
-    # Arena JSON path
-    arena_json_path = Path("/Users/vigji/Desktop/test_3d/multicam_video_2025-05-07T10_12_11_20250528-153946.json")
+    assert arena_json_path.exists()
     pprint(valid_dirs)
     saved_files = parallel_triangulation(valid_dirs, 
                                          calib_toml_path, 
@@ -176,18 +185,3 @@ if __name__ == "__main__":
                                          cropping_options.expected_views, 
                                          kp_detection_options.software, 
                                          arena_json_path=arena_json_path)
-
-
-
-    # for valid_dir in tqdm(valid_dirs, desc="Triangulating directories"):
-    #     print(valid_dir)
-    #     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    #     ds = create_2d_ds(valid_dir)
-    #     _3d_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
-    #     _3d_ds.attrs['fps'] = 'fps'
-    #     _3d_ds.attrs['source_file'] = 'anipose'
-    #     # Save the triangulated points using the directory name
-    #     save_path = valid_dir / f"{valid_dir.name}_triangulated_points_{timestamp}.h5"
-    #     _3d_ds.to_netcdf(save_path)
-
-    # sovle issue with missing calibration dir during first day, (just copy a calibration dir from another day)
