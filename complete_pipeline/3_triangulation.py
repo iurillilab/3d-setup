@@ -120,7 +120,8 @@ def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, exp
 
     with multiprocessing.Pool(num_workers) as pool:
         results = list(tqdm(
-            pool.starmap(process_directory, [(d, calib_toml_path, triang_config_optim, expected_views, software, arena_json_path) for d in valid_dirs]),
+            pool.starmap(process_directory, 
+                         [(d, calib_toml_path, triang_config_optim, expected_views, software, arena_json_path) for d in valid_dirs]),
             total=len(valid_dirs),
             desc="Triangulating directories"
         ))
@@ -128,15 +129,21 @@ def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, exp
     return results  # List of saved file paths
 
 if __name__ == "__main__":
-    
+    from pprint import pprint
     # parser = argparse.ArgumentParser(description="Triangulate all files in a directory")
     # parser.add_argument("--data_dir", type=str, required=True, help="Path to the directory containing the data")
     # args = parser.parse_args()
     cropping_options = CroppingOptions()
-    data_dir = Path("/Users/vigji/Desktop/test_3d/M29/20250507/cricket/133050") #  Path(args.data_dir)
+    main_data_dir = Path("/Users/vigji/Desktop/test_3d") #  Path(args.data_dir)
     kp_detection_options = KPDetectionOptions()
     expected_views = {'mirror-bottom', 'mirror-left', 'mirror-top', 'central', 'mirror-right'}
-    valid_dirs = find_dirs_with_matching_views(data_dir, cropping_options.expected_views, cropping_options.crop_folder_pattern, kp_detection_options.software)
+    possible_data_dirs = sorted(list(main_data_dir.glob("M*/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/*/[0-9][0-9][0-9][0-9][0-9][0-9]")))
+
+    valid_dirs = []
+    for data_dir in possible_data_dirs:
+        candidate_valid_dirs = find_dirs_with_matching_views(data_dir, cropping_options.expected_views, cropping_options.crop_folder_pattern, kp_detection_options.software)
+        assert len(candidate_valid_dirs) < 2
+        valid_dirs.extend(candidate_valid_dirs)
     #calib_dirs = [find_closest_calibration_dir(dir) for dir in valid_dirs]
     toml_files = []
 
@@ -162,8 +169,13 @@ if __name__ == "__main__":
 
     # Arena JSON path
     arena_json_path = Path("/Users/vigji/Desktop/test_3d/multicam_video_2025-05-07T10_12_11_20250528-153946.json")
-
-    saved_files = parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, cropping_options.expected_views, kp_detection_options.software, arena_json_path=arena_json_path)
+    pprint(valid_dirs)
+    saved_files = parallel_triangulation(valid_dirs, 
+                                         calib_toml_path, 
+                                         triang_config_optim, 
+                                         cropping_options.expected_views, 
+                                         kp_detection_options.software, 
+                                         arena_json_path=arena_json_path)
 
 
 

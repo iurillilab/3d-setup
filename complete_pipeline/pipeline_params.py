@@ -20,7 +20,7 @@ class ProcessingOptions:
 @dataclass
 class DetectionOptions:
     board_shape: tuple[int, int] = (5, 7)
-    match_score_min_diff: float = 0.2
+    match_score_min_diff: float = 0.15
     match_score_min: float = 0.4
 
 

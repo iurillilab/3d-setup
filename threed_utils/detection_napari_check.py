@@ -65,7 +65,7 @@ def view_detections(h5_path: Path):
     return viewer
 
 
-def view_movement_3d(movement_ds: "xr.Dataset"):
+def view_movement_3d(movement_ds: "xr.Dataset", viewer: napari.Viewer | None = None):
     """
     Open napari viewer with movement data as color-coded points (2D projection).
     
@@ -77,8 +77,9 @@ def view_movement_3d(movement_ds: "xr.Dataset"):
     """
     import xarray as xr
     
-    # Create napari viewer
-    viewer = napari.Viewer(ndisplay=3)
+    if viewer is None:
+        # Create napari viewer
+        viewer = napari.Viewer(ndisplay=3)
     
     # Squeeze individuals dimension and get position data
     # Shape: (time, space, keypoints)

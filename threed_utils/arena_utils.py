@@ -124,28 +124,13 @@ def triangulate_arena(arena_multiview_ds: dict, calib_toml_path: Path) -> xr.Dat
     xarray.Dataset
         Dataset containing triangulated 3D arena points
     """
-    # Load calibration data
-    cam_names, _, _, _ = read_calibration_toml(calib_toml_path)
-    
-    # Create arena dataset
-    # arena_2d_ds = load_arena_multiview_ds(arena_coordinates, cam_names)
-    
     # Triangulate using anipose
     triang_config = {
         "ransac": True,
         "optim": False,
         "score_threshold": 0.0,
         "reproj_error_threshold": 150,
-    }
-    
-    config = dict(triangulation=triang_config)
-    
-    calib_fname = str(calib_toml_path)
-    cgroup = CameraGroup.load(calib_fname)
-    
-    # Prepare data for triangulation
-    positions = arena_multiview_ds.position.values  # (n_views, n_keypoints, 2)
-    scores = arena_multiview_ds.confidence.values   # (n_views, n_keypoints)
+    }    
     
     # Triangulate
     arena_3d_ds = anipose_triangulate_ds(
