@@ -106,6 +106,7 @@ def read_calibration_toml(toml_path):
 
 
 def load_calibration(calibration_dir: Path):
+    calibration_dir = Path(calibration_dir)
     calibration_paths = sorted(calibration_dir.glob("mc_calibration_output_*"))
     last_calibration_path = calibration_paths[-1]
 

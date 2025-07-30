@@ -65,6 +65,70 @@ def view_detections(h5_path: Path):
     return viewer
 
 
+def view_movement_3d(movement_ds: "xr.Dataset"):
+    """
+    Open napari viewer with movement data as color-coded points (2D projection).
+    
+    Parameters
+    ----------
+    movement_ds : xarray.Dataset
+        Movement dataset with dimensions (time, space, keypoints, individuals)
+        where space=['x', 'y', 'z'] and individuals can be squeezed
+    """
+    import xarray as xr
+    
+    # Create napari viewer
+    viewer = napari.Viewer(ndisplay=3)
+    
+    # Squeeze individuals dimension and get position data
+    # Shape: (time, space, keypoints)
+    positions = movement_ds.position.squeeze('individuals')
+    n_time, n_space, n_keypoints = positions.shape
+    
+    # Extract x,y coordinates only (drop z)
+    x_coords = positions.sel(space='x').values  # (time, keypoints)
+    y_coords = positions.sel(space='y').values  # (time, keypoints)
+    z_coords = positions.sel(space='z').values  # (time, keypoints)
+    
+    # Create time and keypoint index arrays
+    time_indices = np.repeat(np.arange(n_time), n_keypoints)  # [0,0,0,...,1,1,1,...] 
+    keypoint_indices = np.tile(np.arange(n_keypoints), n_time)  # [0,1,2,...,0,1,2,...]
+    
+    # Flatten coordinate arrays
+    x_flat = x_coords.flatten()
+    y_flat = y_coords.flatten()
+    z_flat = z_coords.flatten()
+    
+    # Create mask for valid (non-NaN) points
+    # valid_mask = ~(np.isnan(x_flat) | np.isnan(y_flat) | np.isnan(z_flat))
+    
+    # Filter to valid points only - format for napari: (time, y, x)
+    points_data = np.column_stack([
+        time_indices, #[valid_mask],
+        y_flat, #[valid_mask], 
+        x_flat, #[valid_mask],
+        z_flat
+        # z_flat[valid_mask]
+    ])
+    print(points_data.shape)
+    keypoint_ids = keypoint_indices# [valid_mask]
+    
+    # Add detections as points layer
+    viewer.add_points(
+        points_data,
+        features={"keypoint_id": keypoint_ids},
+        face_color="keypoint_id",
+        face_colormap="viridis",
+        size=5,
+        name="2D Keypoints"
+    )
+    
+    print(f"Loaded {len(points_data)} valid 2D keypoints from {n_time} frames with {n_keypoints} keypoints each")
+    print("Use the timeline slider to navigate through frames")
+    
+    return viewer
+
+
 if __name__ == "__main__":
     # Example usage
     folder = Path("/Users/vigji/Desktop/test_3d/Calibration/20250509/multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328")

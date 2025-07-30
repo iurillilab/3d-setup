@@ -22,19 +22,6 @@ import cv2
 from pipeline_params import CalibrationOptions, DetectionOptions, DetectionRunnerOptions, ProcessingOptions
 
 
-def find_video_files(data_dir: Path) -> List[Path]:
-    """Find video files in the data directory."""
-    video_paths = [
-        f for f in data_dir.iterdir() 
-        if f.suffix == ".mp4" and "overlay" not in f.stem
-    ]
-    
-    if not video_paths:
-        raise ValueError(f"No video files found in {data_dir}")
-    
-    return video_paths
-
-
 def save_results(
     output_dir: Path,
     all_calib_uvs: np.ndarray,
@@ -161,8 +148,6 @@ def test_triangulation(
         fig.savefig(output_dir / "triangulated_frame.png")
         plt.close(fig)
 
-
-def test_triangulation_with_ds()
 
 
 def run_calibration_pipeline(
