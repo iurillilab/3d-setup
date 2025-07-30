@@ -130,12 +130,21 @@ def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, exp
 
 if __name__ == "__main__":
     from pprint import pprint
+    import sys
     # parser = argparse.ArgumentParser(description="Triangulate all files in a directory")
     # parser.add_argument("--data_dir", type=str, required=True, help="Path to the directory containing the data")
     # args = parser.parse_args()
     cropping_options = CroppingOptions()
+    # Change root depending on whether we're mac or linux:
+    if sys.platform == "darwin":
+        print("Running on Mac", sys.platform )
+        root_data_path = Path("/Volumes/SNeurobiology_RAW")
+    else:
+        print("Running on Linux", sys.platform )
+        root_data_path = Path("/mnt/y")
+
     # main_data_dir = Path("/Users/vigji/Desktop/test_3d") #  Path(args.data_dir)
-    main_data_dir = Path("/Volumes/SNeurobiology_RAW/nas_mirror")
+    main_data_dir = root_data_path / "nas_mirror"
     calibration_dir = main_data_dir / "calibration" / "20250509" / "multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328"
     arena_json_path = main_data_dir / "calibration" / "cropping_params.json"
 
@@ -171,7 +180,7 @@ if __name__ == "__main__":
     "n_deriv_smooth": 2,
     "reproj_error_threshold": 150,
     "constraints": [['ear_lf','ear_rt'], ['nose','ear_rt'], ['nose','ear_lf'], ['tailbase', 'back_caudal'], ['back_mid', 'back_caudal'], ['back_rostral', 'back_mid']], #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
-    "constraints_weak": []  #[str(i), str(i+1)] for i in range(len(views_ds.coords["keypoints"])-1)],
+    "constraints_weak": [] 
     }
     print(f"Found {len(valid_dirs)} directories with matching views, and  calibration directories/n Proceeding with calibration")
 
@@ -185,3 +194,4 @@ if __name__ == "__main__":
                                          cropping_options.expected_views, 
                                          kp_detection_options.software, 
                                          arena_json_path=arena_json_path)
+
