@@ -22,63 +22,6 @@ import cv2
 from pipeline_params import CalibrationOptions, DetectionOptions, DetectionRunnerOptions, ProcessingOptions
 
 
-def find_video_files(data_dir: Path) -> List[Path]:
-    """Find video files in the data directory."""
-    video_paths = [
-        f for f in data_dir.iterdir() 
-        if f.suffix == ".mp4" and "overlay" not in f.stem
-    ]
-    
-    if not video_paths:
-        raise ValueError(f"No video files found in {data_dir}")
-    
-    return video_paths
-
-
-# def run_calibration(
-#     all_calib_uvs: np.ndarray,
-#     all_img_sizes: List[tuple],
-#     calib_objpoints: np.ndarray,
-#     options: CalibrationOptions,
-# ) -> tuple:
-#     """Run the calibration process."""
-#     print("Running calibration...")
-    
-#     all_extrinsics, all_intrinsics, calib_poses, spanning_tree = calibrate(
-#         all_calib_uvs,
-#         all_img_sizes,
-#         calib_objpoints,
-#         root=0,
-#         n_samples_for_intrinsics=options.n_samples_for_intrinsics,
-#     )
-    
-#     return all_extrinsics, all_intrinsics, calib_poses, spanning_tree
-
-
-# def run_bundle_adjustment(
-#     all_calib_uvs: np.ndarray,
-#     all_extrinsics: np.ndarray,
-#     all_intrinsics: np.ndarray,
-#     calib_objpoints: np.ndarray,
-#     calib_poses: np.ndarray,
-#     options: CalibrationOptions,
-# ) -> tuple:
-#     """Run bundle adjustment optimization."""
-#     print("Running bundle adjustment...")
-    
-#     adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result = bundle_adjust(
-#         all_calib_uvs,
-#         all_extrinsics,
-#         all_intrinsics,
-#         calib_objpoints,
-#         calib_poses,
-#         n_frames=None,
-#         ftol=options.ftol,
-#     )
-    
-#     return adj_extrinsics, adj_intrinsics, adj_calib_poses, use_frames, result
-
-
 def save_results(
     output_dir: Path,
     all_calib_uvs: np.ndarray,
@@ -204,6 +147,7 @@ def test_triangulation(
         plt.axis("equal")
         fig.savefig(output_dir / "triangulated_frame.png")
         plt.close(fig)
+
 
 
 def run_calibration_pipeline(

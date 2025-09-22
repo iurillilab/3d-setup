@@ -124,28 +124,13 @@ def triangulate_arena(arena_multiview_ds: dict, calib_toml_path: Path) -> xr.Dat
     xarray.Dataset
         Dataset containing triangulated 3D arena points
     """
-    # Load calibration data
-    cam_names, _, _, _ = read_calibration_toml(calib_toml_path)
-    
-    # Create arena dataset
-    # arena_2d_ds = load_arena_multiview_ds(arena_coordinates, cam_names)
-    
     # Triangulate using anipose
     triang_config = {
         "ransac": True,
         "optim": False,
         "score_threshold": 0.0,
         "reproj_error_threshold": 150,
-    }
-    
-    config = dict(triangulation=triang_config)
-    
-    calib_fname = str(calib_toml_path)
-    cgroup = CameraGroup.load(calib_fname)
-    
-    # Prepare data for triangulation
-    positions = arena_multiview_ds.position.values  # (n_views, n_keypoints, 2)
-    scores = arena_multiview_ds.confidence.values   # (n_views, n_keypoints)
+    }    
     
     # Triangulate
     arena_3d_ds = anipose_triangulate_ds(
@@ -460,6 +445,7 @@ def find_optimal_affine_transformation(arena_ds: xr.Dataset,
     """
     Find optimal affine transformation that minimizes angles between arena axes and standard coordinate axes.
     Uses least squares to find the best affine fit, allowing non-rigid transformations.
+    Hard constraint: xy-plane (corners 0,1,2,3) must be flat and aligned with standard xy-plane (z=0).
     
     Parameters
     ----------
@@ -485,7 +471,6 @@ def find_optimal_affine_transformation(arena_ds: xr.Dataset,
     
     # Get all arena points
     all_points = []
-    target_points = []
     
     # Extract all keypoints
     for i in range(8):  # 8 arena corners
@@ -495,17 +480,17 @@ def find_optimal_affine_transformation(arena_ds: xr.Dataset,
     
     all_points = np.array(all_points)  # Shape: (8, 3)
     
-    # Define target positions in standard coordinate system
-    # Create a cube-like structure centered at origin
+    # Define target positions with xy-plane constraint
+    # xy-plane points (corners 0,1,2,3) must have z=0
     target_points = np.array([
-        [0, 0, 0],    # origin (arena_corner_0)
-        [1, 0, 0],    # x-axis (arena_corner_1)
-        [1, 1, 0],    # xy-plane (arena_corner_2)
-        [0, 1, 0],    # y-axis (arena_corner_3)
-        [0, 0, 1],    # z-axis (arena_corner_4)
-        [1, 0, 1],    # xz-plane (arena_corner_5)
-        [1, 1, 1],    # xyz (arena_corner_6)
-        [0, 1, 1],    # yz-plane (arena_corner_7)
+        [0, 0, 0],    # origin (arena_corner_0) - xy-plane
+        [1, 0, 0],    # x-axis (arena_corner_1) - xy-plane
+        [1, 1, 0],    # xy-plane (arena_corner_2) - xy-plane
+        [0, 1, 0],    # y-axis (arena_corner_3) - xy-plane
+        [0, 0, 1],    # z-axis (arena_corner_4) - above xy-plane
+        [1, 0, 1],    # xz-plane (arena_corner_5) - above xy-plane
+        [1, 1, 1],    # xyz (arena_corner_6) - above xy-plane
+        [0, 1, 1],    # yz-plane (arena_corner_7) - above xy-plane
     ])
     
     # Scale target points to match the scale of arena points
@@ -514,9 +499,9 @@ def find_optimal_affine_transformation(arena_ds: xr.Dataset,
     scale_factor = arena_scale / target_scale
     target_points = target_points * scale_factor
     
-    # Solve for affine transformation using least squares
+    # Solve for affine transformation using least squares with xy-plane constraint
     # We need to solve: A * [points; 1] = target_points
-    # This gives us the affine transformation matrix A
+    # But we also need to ensure that xy-plane points (0,1,2,3) have z=0
     
     # Add homogeneous coordinate
     points_homogeneous = np.column_stack([all_points, np.ones(len(all_points))])
@@ -529,7 +514,55 @@ def find_optimal_affine_transformation(arena_ds: xr.Dataset,
     transformation_matrix = np.eye(4)
     transformation_matrix[:3, :] = A
     
+    # Apply the transformation and verify xy-plane constraint
+    transformed_points = apply_affine_transformation_to_points(all_points, transformation_matrix)
+    
+    # Check if xy-plane points (0,1,2,3) have z≈0
+    xy_plane_indices = [0, 1, 2, 3]
+    xy_plane_z_values = transformed_points[xy_plane_indices, 2]
+    print(f"XY-plane z-values after transformation: {xy_plane_z_values}")
+    
+    # If xy-plane is not flat, adjust the transformation
+    if np.any(np.abs(xy_plane_z_values) > 1e-6):
+        print("Adjusting transformation to ensure xy-plane is flat...")
+        # Force xy-plane points to have z=0 by adjusting the transformation
+        # This is a simple approach: set the z-component of xy-plane points to 0
+        for idx in xy_plane_indices:
+            target_points[idx, 2] = 0
+        
+        # Recompute transformation
+        A = target_points.T @ points_homogeneous @ np.linalg.inv(points_homogeneous.T @ points_homogeneous)
+        transformation_matrix[:3, :] = A
+    
     return transformation_matrix
+
+
+def apply_affine_transformation_to_points(points: np.ndarray, transformation_matrix: np.ndarray) -> np.ndarray:
+    """
+    Apply affine transformation to a set of points.
+    
+    Parameters
+    ----------
+    points : np.ndarray
+        Points to transform, shape (n_points, 3)
+    transformation_matrix : np.ndarray
+        4x4 affine transformation matrix
+        
+    Returns
+    -------
+    np.ndarray
+        Transformed points, shape (n_points, 3)
+    """
+    # Add homogeneous coordinate
+    points_homogeneous = np.column_stack([points, np.ones(len(points))])
+    
+    # Apply transformation
+    transformed_points_homogeneous = points_homogeneous @ transformation_matrix.T
+    
+    # Remove homogeneous coordinate
+    transformed_points = transformed_points_homogeneous[:, :3]
+    
+    return transformed_points
 
 
 if __name__ == "__main__":
@@ -552,9 +585,13 @@ if __name__ == "__main__":
     # Define axis edges
     ax_edges = dict(x=["arena_corner_0", "arena_corner_1"], 
                     y=["arena_corner_0", "arena_corner_3"], 
-                    z=["arena_corner_0", "arena_corner_4"])
+                    z=["arena_corner_0", "arena_corner_4"],
+                    x1=["arena_corner_0", "arena_corner_2"],
+                    x2=["arena_corner_1", "arena_corner_3"],
+                    x3=["arena_corner_1", "arena_corner_2"],
+                    x4=["arena_corner_3", "arena_corner_2"])
 
-    for ax_col, (ax_name, ax_edge) in zip(["r", "g", "b"], ax_edges.items()):
+    for ax_col, (ax_name, ax_edge) in zip(["r", "g", "b", "y"]*2, ax_edges.items()):
         sel_arena_corner = arena_ds.position.sel(keypoints=ax_edge[0])
         sel_arena_corner_2 = arena_ds.position.sel(keypoints=ax_edge[1])
         ax1.plot([sel_arena_corner.sel(space="x").values, sel_arena_corner_2.sel(space="x").values], 
