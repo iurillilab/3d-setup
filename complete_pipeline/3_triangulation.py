@@ -60,7 +60,7 @@ def find_dirs_with_matching_views(root_dir: Path, expected_views: set, crop_fold
 def process_directory(valid_dir, calib_toml_path, triang_config_optim, expected_views, software, arena_json_path=None):
     """ Worker function to process a single directory. """
 
-    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=10000)
+    ds = create_2d_ds(valid_dir, expected_views, software, max_n_frames=None)
     print(valid_dir, ": ", ds.position.shape, ds.coords["keypoints"].values)
     threed_ds = anipose_triangulate_ds(ds, calib_toml_path, **triang_config_optim)
 
@@ -116,7 +116,7 @@ def parallel_triangulation(valid_dirs, calib_toml_path, triang_config_optim, exp
     :param arena_json_path: Path to arena JSON file (optional).
     :return: List of saved file paths.
     """
-    num_workers = num_workers or min(multiprocessing.cpu_count(), len(valid_dirs))
+    num_workers = 1  #num_workers or min(multiprocessing.cpu_count(), len(valid_dirs))
     print("===================")
     print(num_workers)
     with multiprocessing.Pool(num_workers) as pool:
@@ -144,12 +144,12 @@ if __name__ == "__main__":
         print("Running on Linux", sys.platform )
         root_data_path = Path("/mnt/y")
 
-    main_data_dir = Path("/Users/vigji/Desktop/test_3d") #  Path(args.data_dir)
-    calibration_dir = Path("/Users/vigji/Desktop/test_3d/Calibration/20250509/multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328")
-    arena_json_path = Path("/Users/vigji/Desktop/test_3d/cropping_params.json")
-    # main_data_dir = root_data_path / "nas_mirror"
-    # calibration_dir = main_data_dir / "calibration" / "20250509" / "multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328"
-    # arena_json_path = main_data_dir / "calibration" / "cropping_params.json"
+    # main_data_dir = Path("/Users/vigji/Desktop/test_3d") #  Path(args.data_dir)
+    # calibration_dir = Path("/Users/vigji/Desktop/test_3d/Calibration/20250509/multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328")
+    # arena_json_path = Path("/Users/vigji/Desktop/test_3d/cropping_params.json")
+    main_data_dir = root_data_path / "nas_mirror"
+    calibration_dir = main_data_dir / "calibration" / "20250509" / "multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328"
+    arena_json_path = main_data_dir / "calibration" / "cropping_params.json"
 
     assert arena_json_path.exists()
 
@@ -161,7 +161,8 @@ if __name__ == "__main__":
 
     kp_detection_options = KPDetectionOptions()
     expected_views = {'mirror-bottom', 'mirror-left', 'mirror-top', 'central', 'mirror-right'}
-    possible_data_dirs = sorted(list(main_data_dir.glob("M*/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/*/[0-9][0-9][0-9][0-9][0-9][0-9]")))
+    # possible_data_dirs = sorted(list(main_data_dir.glob("M*/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/*/[0-9][0-9][0-9][0-9][0-9][0-9]")))
+    possible_data_dirs = sorted(list(main_data_dir.glob("M31/20250511/cricket/[0-9][0-9][0-9][0-9][0-9][0-9]")))
 
     valid_dirs = []
     for data_dir in possible_data_dirs:

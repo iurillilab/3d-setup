@@ -36,36 +36,36 @@ def get_model_config() -> Dict[str, Dict]:
     models_path = root_data_path / "nas_mirror" / "DLC_final_models"
     
     config = {
-        "cricket": {
-            "config_path": models_path / "cricket-bottom-vigji-2025-07-01" / "config.yaml",
-            # "shuffle": 8,
-            "path_patterns": ["central", "cricket"],
-            "exclusion_patterns": []
-        },
-        "object": {
-            "config_path": models_path / "object-bottom-vigji-2025-07-01" / "config.yaml", 
-            #"shuffle": 3,
-            "path_patterns": ["central", "object"],
-            "exclusion_patterns": []
-        },
-        "roach": {
-            "config_path": models_path / "roach-bottom-vigji-2025-07-01" / "config.yaml",
-            #"shuffle": 1,  # assuming shuffle 1, adjust as needed
-            "path_patterns": ["central", "roach"],
-            "exclusion_patterns": []
-        },
+        # "cricket": {
+        #     "config_path": models_path / "cricket-bottom-vigji-2025-07-01" / "config.yaml",
+        #     # "shuffle": 8,
+        #     "path_patterns": ["central", "cricket"],
+        #     "exclusion_patterns": []
+        # },
+        # "object": {
+        #     "config_path": models_path / "object-bottom-vigji-2025-07-01" / "config.yaml", 
+        #     #"shuffle": 3,
+        #     "path_patterns": ["central", "object"],
+        #     "exclusion_patterns": []
+        # },
+        # "roach": {
+        #     "config_path": models_path / "roach-bottom-vigji-2025-07-01" / "config.yaml",
+        #     #"shuffle": 1,  # assuming shuffle 1, adjust as needed
+        #     "path_patterns": ["central", "roach"],
+        #     "exclusion_patterns": []
+        # },
         "mouse-bottom": {
             "config_path": models_path / "mouse-bottom-vigji-2025-07-01" / "config.yaml",
             #"shuffle": 2,
             "path_patterns": ["central"],
             "exclusion_patterns": []
         },
-        # "mouse-side": {
-        #     "config_path": models_path / "mouse-side-vigji-2025-07-01" / "config.yaml",
-        #     #"shuffle": 2,
-        #     "path_patterns": ["mirror"],
-        #     "exclusion_patterns": []
-        # }
+        "mouse-side": {
+            "config_path": models_path / "mouse-side-vigji-2025-07-01" / "config.yaml",
+            #"shuffle": 2,
+            "path_patterns": ["mirror"],
+            "exclusion_patterns": []
+        }
     }
     
     # Validate that all config files exist and update their project_path
@@ -264,14 +264,16 @@ if __name__ == "__main__":
     
     # Get videos to process - this logic should be made configurable
     # For now, using the original pattern as an example
-    video_pattern = "M30/*/*/*/*v2*/*.mp4" # "M*/*/*/*/*/*central*.mp4"
+    video_pattern = "M31*/*11/cricket/*/*v2*/*.mp4" # "M*/*/*/*/*/*central*.mp4"
     
     # You'll need to define the base path - this should be made configurable
     # base_path = Path("/your/data/path")  # Uncomment and set appropriate path
     # base_path = Path("/Users/vigji/Desktop/videos_test/test-cricket-roach-object")
-    base_path = root_data_path / "nas_mirror" 
-    all_videos = sorted(list(base_path.glob(video_pattern)))
     
+    base_path = root_data_path / "nas_mirror" # "P07_PREY_HUNTING_YE" / "e01_ephys_recordings" 
+    assert base_path.exists(), f"{base_path} does not exist!"
+    all_videos = sorted(list(base_path.glob(video_pattern)))
+    pprint(all_videos)
     # Example of how to use the functions:
     process_videos(
         video_paths=all_videos,
