@@ -90,4 +90,45 @@ BUT we do not fint the existing model anymore
 Model location:
 Trained models should live in: D:\SLEAP_models and back up constantly in N:\SNeuroBiology_shared\SLEAP_models.
 
+
 Processing happens as fast as `ffmpeg` and multiprocessing allow, but it can still be slow for large files. The script will print the progress to the console.
+
+
+### Notes on new files organization:
+
+Root directory: nas_mirror
+
+nas_mirror
+    -almost_final_models/
+        - dlc models for cricket, object and roach + mouse bottom-view
+    - calibration/ 
+        - cropping_params.json
+        - 20250509/
+            -calibration session data
+    - DLC_final_mdoels/
+        - cricket-bottom-model
+        - mouse-bottom-model
+        - mouse-side-model
+        - roach_bottom-model
+        - object-bottom-model
+    - used_calibration/
+        empty
+    -M29, M30, M31/
+        - cricket/
+            -.csv file: timestamps (for frame rate?)
+            - .avi: original video
+            - 133050/
+                - multicam_video_2025-05-07T14_11_04_cropped-v2_20250701121021: 
+                    - cropped videos (central, sides) .mp4
+                    - Tracking:
+                        - Central: full.pickle, meta.pickle, snapshot.h5-> differences?
+                        - Sides: full.pickle, meta.pickle, snapshot.h5
+                        - Triangulations: datetime.h5 (how it has been obtained?)
+                - /multicam_video_2025-05-07T14_11_04_cropped_20250528154623
+                    - just central tracking
+        - object:
+            - Follows the same structure as cricketb
+    - valid_crops_with_full_tracking.txt: list of cropped videos with valid params (for cropping or framerate?)
+    - multicam_video_2025-05-07T10_12_11_20250528-153946.json: ffmpeg arguments for the cropping
+
+
