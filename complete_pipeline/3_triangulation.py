@@ -1,4 +1,6 @@
+from logging import root
 from pathlib import Path
+from sys import set_coroutine_origin_tracking_depth
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -150,6 +152,8 @@ if __name__ == "__main__":
     main_data_dir = root_data_path / "nas_mirror"
     calibration_dir = main_data_dir / "calibration" / "20250509" / "multicam_video_2025-05-09T09_56_51_cropped-v2_20250710121328"
     arena_json_path = main_data_dir / "calibration" / "cropping_params.json"
+    test_dir = root_data_path / "thomas"
+
 
     assert arena_json_path.exists()
 
@@ -164,12 +168,12 @@ if __name__ == "__main__":
     # possible_data_dirs = sorted(list(main_data_dir.glob("M*/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/*/[0-9][0-9][0-9][0-9][0-9][0-9]")))
     possible_data_dirs = sorted(list(main_data_dir.glob("M31/20250511/cricket/[0-9][0-9][0-9][0-9][0-9][0-9]")))
 
-    valid_dirs = []
-    for data_dir in possible_data_dirs:
-        candidate_valid_dirs = find_dirs_with_matching_views(data_dir, cropping_options.expected_views, cropping_options.crop_folder_pattern, kp_detection_options.software)
-        assert len(candidate_valid_dirs) < 2
-        valid_dirs.extend(candidate_valid_dirs)
-    #calib_dirs = [find_closest_calibration_dir(dir) for dir in valid_dirs]
+    valid_dirs = [test_dir / "testing_3d",]
+    # for data_dir in possible_data_dirs:
+    #     candidate_valid_dirs = find_dirs_with_matching_views(data_dir, cropping_options.expected_views, cropping_options.crop_folder_pattern, kp_detection_options.software)
+    #     assert len(candidate_valid_dirs) < 2
+    #     valid_dirs.extend(candidate_valid_dirs)
+    # #calib_dirs = [find_closest_calibration_dir(dir) for dir in valid_dirs]
     toml_files = []
 
     triang_config_optim = {
