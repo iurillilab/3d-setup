@@ -1,6 +1,26 @@
 # 3d-setup
 Processing of data from mirror setup for 3D pose estimation
 
+## Visualization Library
+
+The `visualization_library/` folder contains advanced visualization tools for 3D animal tracking data:
+
+- **Enhanced Multi-Animal Visualizer**: Supports mice, crickets, roaches, and other animals
+- **Interactive 3D Plots**: Plotly-based visualizations with zoom, pan, rotate
+- **Statistics Analysis**: Velocity, distance, and movement pattern analysis
+- **GUI Interface**: User-friendly interface for data exploration
+
+### Quick Start
+```bash
+# Launch enhanced GUI
+python visualization_library/launch_enhanced_visualizer.py --gui
+
+# CLI with statistics
+python visualization_library/launch_enhanced_visualizer.py --mouse-file data.h5 --stats
+```
+
+See `visualization_library/README_ENHANCED.md` for detailed documentation.
+
 ## (In progress) overall description of the pipeline
 The starting data correpond of single videos acquired over multiple days for (single) animals abituating to the arena or hunting. For each day of experiment, a calibration movie was acquired with the standard checkerboard.
 
