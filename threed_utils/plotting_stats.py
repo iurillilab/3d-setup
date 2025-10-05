@@ -267,3 +267,326 @@ def plot_speed_subplots(
     fig.show()
     
     return fig, None  # Return None for axes to maintain compatibility
+
+
+def plot_anchor_distances(
+    dataset_original: xr.Dataset,
+    dataset_filtered: xr.Dataset,
+    keypoint_cols: str | Iterable[str] | None = None,
+    max_frame: int = 1000,
+    save_path: str | None = None,
+    title: str | None = None,
+    skeleton: list[tuple[str, str]] | None = None,
+):
+    """
+    Plot anchor distances (distances to connected keypoints) for outlier analysis.
+    """
+    # Data preparation
+    if keypoint_cols is None:
+        keypoint_cols = dataset_original.keypoints.values
+    elif isinstance(keypoint_cols, str):
+        keypoint_cols = [keypoint_cols]
+    
+    # Select keypoints and slice data
+    ds_sel_orig = dataset_original.sel(keypoints=keypoint_cols)
+    ds_sel_filt = dataset_filtered.sel(keypoints=keypoint_cols)
+    
+    if max_frame > 0:
+        ds_sel_orig = ds_sel_orig.isel(time=slice(0, max_frame))
+        ds_sel_filt = ds_sel_filt.isel(time=slice(0, max_frame))
+    
+    # Convert to numpy arrays
+    arr_orig = ds_sel_orig["position"].values
+    arr_filt = ds_sel_filt["position"].values
+    
+    # Handle array dimensions - convert to (T, S, K) format
+    if arr_orig.ndim == 4:
+        arr_orig = arr_orig.squeeze(axis=3)
+        arr_filt = arr_filt.squeeze(axis=3)
+    elif arr_orig.ndim == 3 and arr_orig.shape[1] == 3:
+        arr_orig = arr_orig.transpose(1, 2, 0)
+        arr_filt = arr_filt.transpose(1, 2, 0)
+    
+    # Get time coordinate
+    t = ds_sel_orig["time"].values
+    selected_kps = list(ds_sel_orig.keypoints.values)
+    K = max(1, arr_orig.shape[2] if arr_orig.ndim == 3 else 1)
+    
+    # Create subplots - one row per keypoint
+    fig = sp.make_subplots(
+        rows=K,
+        cols=1,
+        subplot_titles=[f"{name} - Distance from Anchors" for name in selected_kps],
+        shared_xaxes=True,
+        vertical_spacing=0.1
+    )
+    
+    # Add traces for each keypoint
+    for i, name in enumerate(selected_kps):
+        # Calculate anchor distances
+        anchor_dist_orig = None
+        anchor_dist_filt = None
+        if skeleton is not None:
+            connections = [conn for conn in skeleton if name in conn]
+            if connections:
+                anchor_dists_orig = []
+                anchor_dists_filt = []
+                for conn in connections:
+                    other_kp = conn[1] if conn[0] == name else conn[0]
+                    if other_kp in dataset_original.keypoints.values:
+                        other_idx_full = list(dataset_original.keypoints.values).index(other_kp)
+                        other_pos_orig = dataset_original.position.values[:len(t), :, other_idx_full, 0]
+                        other_pos_filt = dataset_filtered.position.values[:len(t), :, other_idx_full, 0]
+                        
+                        dist_orig = np.linalg.norm(arr_orig[:, :, i].squeeze() - other_pos_orig, axis=1)
+                        dist_filt = np.linalg.norm(arr_filt[:, :, i].squeeze() - other_pos_filt, axis=1)
+                        anchor_dists_orig.append(dist_orig)
+                        anchor_dists_filt.append(dist_filt)
+                
+                if anchor_dists_orig:
+                    anchor_dist_orig = np.mean(anchor_dists_orig, axis=0)
+                    anchor_dist_filt = np.mean(anchor_dists_filt, axis=0)
+        
+        if anchor_dist_orig is not None:
+            # Original data
+            fig.add_trace(
+                go.Scatter(
+                    x=t,
+                    y=anchor_dist_orig,
+                    mode='markers',
+                    name=f"{name} - Original",
+                    marker=dict(color='lightblue', size=3, opacity=0.6),
+                    showlegend=True,
+                    legendgroup=f"group{i}"
+                ),
+                row=i+1, col=1
+            )
+            
+            # Filtered data
+            fig.add_trace(
+                go.Scatter(
+                    x=t,
+                    y=anchor_dist_filt,
+                    mode='markers',
+                    name=f"{name} - Filtered",
+                    marker=dict(color='red', size=3, opacity=0.8),
+                    showlegend=True,
+                    legendgroup=f"group{i}"
+                ),
+                row=i+1, col=1
+            )
+        else:
+            # No anchor data - show distance to other selected keypoints instead
+            other_kps = [kp for j, kp in enumerate(selected_kps) if j != i]
+            if other_kps:
+                # Calculate distances to other selected keypoints
+                other_dists_orig = []
+                other_dists_filt = []
+                for other_kp in other_kps:
+                    other_idx = selected_kps.index(other_kp)
+                    dist_orig = np.linalg.norm(arr_orig[:, :, i].squeeze() - arr_orig[:, :, other_idx].squeeze(), axis=1)
+                    dist_filt = np.linalg.norm(arr_filt[:, :, i].squeeze() - arr_filt[:, :, other_idx].squeeze(), axis=1)
+                    other_dists_orig.append(dist_orig)
+                    other_dists_filt.append(dist_filt)
+                
+                if other_dists_orig:
+                    anchor_dist_orig = np.mean(other_dists_orig, axis=0)
+                    anchor_dist_filt = np.mean(other_dists_filt, axis=0)
+                    
+                    # Original data
+                    fig.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=anchor_dist_orig,
+                            mode='markers',
+                            name=f"{name} - Original (to other keypoints)",
+                            marker=dict(color='lightblue', size=3, opacity=0.6),
+                            showlegend=True,
+                            legendgroup=f"group{i}"
+                        ),
+                        row=i+1, col=1
+                    )
+                    
+                    # Filtered data
+                    fig.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=anchor_dist_filt,
+                            mode='markers',
+                            name=f"{name} - Filtered (to other keypoints)",
+                            marker=dict(color='red', size=3, opacity=0.8),
+                            showlegend=True,
+                            legendgroup=f"group{i}"
+                        ),
+                        row=i+1, col=1
+                    )
+                else:
+                    # No data at all
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[], y=[],
+                            mode='markers',
+                            name=f"{name} - No Data",
+                            showlegend=False,
+                            visible=False
+                        ),
+                        row=i+1, col=1
+                    )
+            else:
+                # Single keypoint - no anchor data
+                fig.add_trace(
+                    go.Scatter(
+                        x=[], y=[],
+                        mode='markers',
+                        name=f"{name} - No Anchor Data",
+                        showlegend=False,
+                        visible=False
+                    ),
+                    row=i+1, col=1
+                )
+    
+    # Update layout
+    if not title:
+        title = f"Anchor Distances: Original vs Filtered (n={K})"
+    
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=18), x=0.5),
+        height=max(600, K * 200),
+        width=1200,
+        showlegend=True,
+        template="plotly_white"
+    )
+    
+    # Update axes
+    fig.update_xaxes(title_text="Frame", showgrid=True, gridwidth=1, gridcolor='lightgray')
+    fig.update_yaxes(title_text="Distance from Anchors (units)", showgrid=True, gridwidth=1, gridcolor='lightgray')
+    
+    # Save if requested
+    if save_path is not None:
+        fig.write_html(save_path.replace('.png', '.html'))
+        print(f"Anchor distances plot saved as: {save_path.replace('.png', '.html')}")
+    
+    print(f"\n======================================================================")
+    print(f"ANCHOR DISTANCES PLOT OPENED IN BROWSER")
+    print(f"======================================================================")
+    fig.show()
+    
+    return fig, None
+
+
+def plot_center_distances(
+    dataset_original: xr.Dataset,
+    dataset_filtered: xr.Dataset,
+    keypoint_cols: str | Iterable[str] | None = None,
+    max_frame: int = 1000,
+    save_path: str | None = None,
+    title: str | None = None,
+):
+    """
+    Plot center distances (distances from mouse center) for outlier analysis.
+    """
+    # Data preparation
+    if keypoint_cols is None:
+        keypoint_cols = dataset_original.keypoints.values
+    elif isinstance(keypoint_cols, str):
+        keypoint_cols = [keypoint_cols]
+    
+    # Select keypoints and slice data
+    ds_sel_orig = dataset_original.sel(keypoints=keypoint_cols)
+    ds_sel_filt = dataset_filtered.sel(keypoints=keypoint_cols)
+    
+    if max_frame > 0:
+        ds_sel_orig = ds_sel_orig.isel(time=slice(0, max_frame))
+        ds_sel_filt = ds_sel_filt.isel(time=slice(0, max_frame))
+    
+    # Convert to numpy arrays
+    arr_orig = ds_sel_orig["position"].values
+    arr_filt = ds_sel_filt["position"].values
+    
+    # Handle array dimensions - convert to (T, S, K) format
+    if arr_orig.ndim == 4:
+        arr_orig = arr_orig.squeeze(axis=3)
+        arr_filt = arr_filt.squeeze(axis=3)
+    elif arr_orig.ndim == 3 and arr_orig.shape[1] == 3:
+        arr_orig = arr_orig.transpose(1, 2, 0)
+        arr_filt = arr_filt.transpose(1, 2, 0)
+    
+    # Get time coordinate
+    t = ds_sel_orig["time"].values
+    selected_kps = list(ds_sel_orig.keypoints.values)
+    K = max(1, arr_orig.shape[2] if arr_orig.ndim == 3 else 1)
+    
+    # Calculate mouse center
+    mouse_center_orig = np.mean(arr_orig, axis=(0, 2), keepdims=True)
+    mouse_center_filt = np.mean(arr_filt, axis=(0, 2), keepdims=True)
+    
+    # Create subplots - one row per keypoint
+    fig = sp.make_subplots(
+        rows=K,
+        cols=1,
+        subplot_titles=[f"{name} - Distance from Center" for name in selected_kps],
+        shared_xaxes=True,
+        vertical_spacing=0.1
+    )
+    
+    # Add traces for each keypoint
+    for i, name in enumerate(selected_kps):
+        # Calculate distance from center
+        dist_center_orig = np.linalg.norm(arr_orig[:, :, i].squeeze() - mouse_center_orig[:, :, 0], axis=1)
+        dist_center_filt = np.linalg.norm(arr_filt[:, :, i].squeeze() - mouse_center_filt[:, :, 0], axis=1)
+        
+        # Original data
+        fig.add_trace(
+            go.Scatter(
+                x=t,
+                y=dist_center_orig,
+                mode='markers',
+                name=f"{name} - Original",
+                marker=dict(color='lightgreen', size=3, opacity=0.6),
+                showlegend=True,
+                legendgroup=f"group{i}"
+            ),
+            row=i+1, col=1
+        )
+        
+        # Filtered data
+        fig.add_trace(
+            go.Scatter(
+                x=t,
+                y=dist_center_filt,
+                mode='markers',
+                name=f"{name} - Filtered",
+                marker=dict(color='orange', size=3, opacity=0.8),
+                showlegend=True,
+                legendgroup=f"group{i}"
+            ),
+            row=i+1, col=1
+        )
+    
+    # Update layout
+    if not title:
+        title = f"Center Distances: Original vs Filtered (n={K})"
+    
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=18), x=0.5),
+        height=max(600, K * 200),
+        width=1200,
+        showlegend=True,
+        template="plotly_white"
+    )
+    
+    # Update axes
+    fig.update_xaxes(title_text="Frame", showgrid=True, gridwidth=1, gridcolor='lightgray')
+    fig.update_yaxes(title_text="Distance from Center (units)", showgrid=True, gridwidth=1, gridcolor='lightgray')
+    
+    # Save if requested
+    if save_path is not None:
+        fig.write_html(save_path.replace('.png', '.html'))
+        print(f"Center distances plot saved as: {save_path.replace('.png', '.html')}")
+    
+    print(f"\n======================================================================")
+    print(f"CENTER DISTANCES PLOT OPENED IN BROWSER")
+    print(f"======================================================================")
+    fig.show()
+    
+    return fig, None
