@@ -14,7 +14,7 @@ from scipy.signal import butter, filtfilt, savgol_filter
 from tqdm import tqdm
 
 
-def denoise_positions_savgol(ds: xr.Dataset, window_s=0.1, polyorder=2):
+def denoise_positions_savgol(ds: xr.Dataset, window_s=0.5, polyorder=3):
     fps = 60
     window_length = int(window_s * fps)
     w = max(3, int(round(window_s * fps)))
@@ -48,35 +48,56 @@ if __name__ == "__main__":
     )
     PARSER.add_argument("-k", "--keypoints", nargs="+", action="extend", default=None)
     PARSER.add_argument("--filter", type=str, default="savgol")
+    PARSER.add_argument("--max_frame", type=int, default=1000, help="Maximum frame to process (use -1 for entire dataset)")
+    PARSER.add_argument("--ymin", type=float, default=None, help="Minimum y-axis value for zooming")
+    PARSER.add_argument("--ymax", type=float, default=None, help="Maximum y-axis value for zooming")
     args = PARSER.parse_args()
     INPUT_PATH = Path(args.input_path)
     filtering_method = args.filter
     data_original = xr.open_dataset(INPUT_PATH)
     data = data_original.copy()
-    if args.keypoints is not None:
-        if len(args.keypoints) == 1:
-            data = data.sel(keypoints=args.keypoints[0])
-        else:
-            data = data.sel(keypoints=args.keypoints)
+    
+    # Apply filtering first, then select keypoints
     if filtering_method == "savgol":
         data["position"] = denoise_positions_savgol(data)
     elif filtering_method == "lowpass":
         data["position"] = denoise_position_lowpass(data)
-    # produce the two plots
+    
+    # Select keypoints after filtering
+    if args.keypoints is not None:
+        if len(args.keypoints) == 1:
+            data = data.sel(keypoints=args.keypoints[0])
+            data_original = data_original.sel(keypoints=args.keypoints[0])
+        else:
+            data = data.sel(keypoints=args.keypoints)
+            data_original = data_original.sel(keypoints=args.keypoints)
+    
+    # Ensure both datasets have the same structure
+    if len(data.position.shape) != 4:
+        data = data.expand_dims({"keypoints": 1})
+    if len(data_original.position.shape) != 4:
+        data_original = data_original.expand_dims({"keypoints": 1})
+    
+    # Determine max_frame - use entire dataset if -1
+    total_frames = len(data_original.time)
+    max_frame = args.max_frame if args.max_frame != -1 else total_frames
+    print(f"Dataset has {total_frames} frames, processing {max_frame} frames")
+    
+    # Set y-axis limits if provided
+    ylim = None
+    if args.ymin is not None or args.ymax is not None:
+        ylim = (args.ymin, args.ymax)
+        print(f"Setting y-axis limits: {ylim}")
+    
     plot_speed_subplots(
         data_original,
         keypoint_cols=args.keypoints,
-        max_frame=1000,
-        ncols=4,
-        figsize=(16, 10),
-        title="Original Data",
-    )
-    data["position"] = data.position.values.reshape(data.position.shape + (1,))
-    plot_speed_subplots(
-        data,
-        keypoint_cols=args.keypoints,
-        max_frame=1000,
-        ncols=4,
-        figsize=(16, 10),
-        title=f"Filtered Data ({filtering_method})",
+        max_frame=max_frame,
+        ncols=2,
+        figsize=(28, 18),
+        dataset2=data,
+        dataset1_label="Original",
+        dataset2_label=f"Filtered ({filtering_method})",
+        title=f"Speed Comparison: Original vs {filtering_method.title()} Filtered",
+        ylim=ylim,
     )
