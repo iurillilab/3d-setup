@@ -61,8 +61,8 @@ def get_coordinates(frame, name: str, coordinates, value):
         size=10,
         face_color=colors,
         name="points",
-        edge_color="white",
-        edge_width=0.5,
+        # edge_color="white",
+        # edge_width=0.5,
     )
     points_layer.editable = True
     napari.run()
@@ -129,7 +129,8 @@ def get_coordinates_arena_and_transform(rectangles, frame):
     """
 
     coordinates = np.load(
-         r"D:\P05_3DRIG_YE-LP\e01_mouse_hunting\v04_mice-hunting\20240803\M4\140337\right_coords.pkl",
+         "/mnt/d/P05_3DRIG_YE-LP/e01_mouse_hunting/v04_mice-hunting/20240803/M4/140337/right_coords.pkl"
+,
          allow_pickle=True,
      )
 

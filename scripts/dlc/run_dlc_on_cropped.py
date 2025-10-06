@@ -13,7 +13,7 @@ if sys.platform == "darwin":
     root_data_path = Path("/Volumes/SNeurobiology_RAW")
 else:
     print("Running on Linux", sys.platform )
-    root_data_path = Path("/mnt/y")
+    root_data_path = Path("/mnt/nas/")
 
 
 # CROSS-PLATFORM SOLUTION:
@@ -264,15 +264,15 @@ if __name__ == "__main__":
 
     # Get videos to process - this logic should be made configurable
     # For now, using the original pattern as an example
-    video_pattern = "M31*/*11/cricket/*/*v2*/*.mp4" # "M*/*/*/*/*/*central*.mp4"
+    video_pattern = "2025*/Cricket/M*/**/*v2*/*central*.mp4" # "M*/*/*/*/*/*central*.mp4"
     video_pattern = "*.mp4"
 
     # You'll need to define the base path - this should be made configurable
     # base_path = Path("/your/data/path")  # Uncomment and set appropriate path
     # base_path = Path("/Users/vigji/Desktop/videos_test/test-cricket-roach-object")
 
-    base_path = root_data_path / "nas_mirror"  # "P07_PREY_HUNTING_YE" / "e01_ephys_recordings"
-    base_path = root_data_path / "thomas" / "testing_3d"
+    base_path = root_data_path #"nas_mirror"  # "P07_PREY_HUNTING_YE" / "e01_ephys_recordings"
+    base_path = root_data_path / "SNeuroBiology_shared" / "CHOMP"
     assert base_path.exists(), f"{base_path} does not exist!"
     all_videos = sorted(list(base_path.glob(video_pattern)))
     pprint(all_videos)

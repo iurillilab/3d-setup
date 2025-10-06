@@ -1,0 +1,1 @@
+python 0a_define_cropping.py /mnt/nas/SNeuroBiology_shared/CHOMP/20250729/M32/101656/multicam_video_2025-07-29T10_20_43.avi
