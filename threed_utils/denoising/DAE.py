@@ -31,15 +31,20 @@ class DAE(nn.Module):
         return recon, residual
 
 
-def loss_masked(pred, target, m_flat, lam=0.05):
-    # main: only masked entries
+def loss_masked(pred, target, m_flat, lam: float = 0.05):
+    """
+    pred,target: (B,39)
+    m_flat:      (B,39)  1=observed, 0=masked
+    """
+    se = (pred - target) ** 2
     masked = 1 - m_flat
-    masked_mse = F.mse_loss(
-        pred * masked, target * masked, reduction="sum"
-    ) / masked.sum().clamp(min=1.0)
-    # tiny consistency on unmasked to keep pose coherent
     unmasked = m_flat
-    unmasked_mse = F.mse_loss(
-        pred * unmasked, target * unmasked, reduction="sum"
-    ) / unmasked.sum().clamp(min=1.0)
-    return masked_mse + lam * unmasked_mse
+
+    # normalize per sample by count of masked/unmasked, then average batch
+    masked_cnt = masked.sum(dim=1).clamp(min=1.0)
+    unmasked_cnt = unmasked.sum(dim=1).clamp(min=1.0)
+
+    masked_loss = ((se * masked).sum(dim=1) / masked_cnt).mean()
+    unmasked_loss = ((se * unmasked).sum(dim=1) / unmasked_cnt).mean()
+
+    return masked_loss + lam * unmasked_loss
