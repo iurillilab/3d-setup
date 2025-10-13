@@ -94,6 +94,7 @@ def generate_subset(
     threshold: float = 0.5,
     quantile: float = 0.75,
     max_frames: int = 1000,
+    save: bool = False,
 ):
     """Generate a subset of frames from a pose estimation file based on confidence scores.
     Parameters
@@ -114,8 +115,12 @@ def generate_subset(
     sel_pos, sel_times, cutoff, idx = select_top_frames(
         poses, threshold, quantile, max_frames
     )
-    subset = poses.sel(time=sel_times)["position"]
-    return torch.tensor(subset.values)
+    subset = torch.Tensor(poses.sel(time=sel_times)["position"].values)
+    if save:
+        out_path = file_path.parent / f"{file_path.stem}_subset.npy"
+        np.save(out_path, subset.numpy())
+        print(f"Saved subset to {out_path}")
+    return subset
 
 
 if __name__ == "__main__":
@@ -123,9 +128,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input", type=str, help="Path to input pose estimation file (NetCDF format)"
     )
+    parser.add_argument(
+        "--save", action="store_true", help="Whether to save the subset"
+    )
 
     args = parser.parse_args()
     input_path = Path(args.input)
+    save = args.save
     assert input_path.exists(), f"Input path {input_path} does not exist."
-    subset = generate_subset(input_path)
+    subset = generate_subset(input_path, save=save)
     print(f"Subset shape: {subset.shape}")
