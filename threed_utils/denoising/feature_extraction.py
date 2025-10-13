@@ -93,7 +93,7 @@ def generate_subset(
     file_path: Path,
     threshold: float = 0.5,
     quantile: float = 0.75,
-    max_frames: int = 1000,
+    max_frames: int = 5000,
     save: bool = False,
 ):
     """Generate a subset of frames from a pose estimation file based on confidence scores.
