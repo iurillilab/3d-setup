@@ -182,3 +182,5 @@ cython_debug/
 # wandb
 wandb/
 iframe_figures/
+threed_utils/denoising/logs/
+**/*.tfevents.*

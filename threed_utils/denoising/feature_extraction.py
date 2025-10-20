@@ -122,6 +122,8 @@ def generate_subset(
         print(f"Saved subset to {out_path}")
     return subset
 
+#TODO: add extraction of temporal featrues to train model over time window t
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
