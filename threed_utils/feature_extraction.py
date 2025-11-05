@@ -392,31 +392,77 @@ def get_distance_mouse_cricket(mouse_coordinates:np.ndarray, cricket_coordinates
         mouse_centroid = mouse_coordinates[:, :2]
     return np.linalg.norm(mouse_centroid - cricket_coordinates, axis=1)
 
+def find_latest_pickle(session_dir:Path, pattern:str)->Path:
+    """Find the most recent pickle file matching pattern"""
+    candidates = list(session_dir.rglob(f"*{pattern}*_full.pickle"))
+    if not candidates:
+        raise FileNotFoundError(f"No pickle files found matching pattern '*{pattern}*_full.pickle' in {session_dir}")
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+def find_latest_mouse_central_pickle(session_dir:Path)->Path:
+    """Find the most recent mouse central/bottom pickle file"""
+    patterns = ["*mouse*central*_full.pickle", "*mouse*bottom*_full.pickle", "*mouse*_full.pickle"]
+    candidates = []
+    for pattern in patterns:
+        candidates.extend(list(session_dir.rglob(pattern)))
+    if not candidates:
+        raise FileNotFoundError(f"No mouse pickle files found in {session_dir}")
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+def find_triangulated_h5(session_dir:Path)->Path:
+    """Find the triangulated h5 file"""
+    candidates = list(session_dir.rglob("*triangulated*.h5"))
+    if not candidates:
+        raise FileNotFoundError(f"No triangulated h5 files found in {session_dir}")
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
 
 if __name__ == "__main__":
-    # let's hardoce the session and the other paths for testing:
-    session = xr.open_dataset("/Users/thomasbush/Downloads/multicam_video_2025-05-07T12_16_20_cropped-v2_20250701121021_triangulated_points_20250802-065459.h5")
-    arena_3d = xr.open_dataset("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/newarena.h5")
-    arena_views = xr.open_dataset("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/3d-setup/tests/assets/arena_views.h5")
-    # let's get the velocity:
-    velocity = get_velocity(session)
-    print(velocity.shape)
-    # let's get the accelleration:
-    accelleration = get_accelleration(session)
-    print(accelleration.shape)
-    # let's get the head rear:
-    head_rear = get_head_rear(session)
-    print(head_rear.shape)
-    # let's print the other features:
-    print(get_theta(session, ("nose", "tailbase")).shape)
-    print(get_turning_rate(session, ("nose", "tailbase")).shape)
-    print(get_yaw_offset(session).shape)
-    print(get_pitch_angle(session, ("nose", "tailbase")).shape)
-    print(get_velocity_components(session)[0].shape)
-    print(get_manipulation_index_paws(session)[0].shape)
-    print(get_freezing(session).shape)
-    print(get_curvature(session).shape)
-    print(get_position_centroid(session).shape)
-    print(get_distance_to_walls(session, arena_3d).shape)
+    parser = ArgumentParser(description="Extract features from tracking data")
+    parser.add_argument("directory", type=str, help="Session directory path")
+    parser.add_argument("--time-slice", type=int, default=None, help="Time slice to process (default: all data)")
+    args = parser.parse_args()
+    
+    session_dir = Path(args.directory)
+    assert session_dir.exists(), f"Directory does not exist: {session_dir}"
+    
+    cricket_pickle = find_latest_pickle(session_dir, "cricket")
+    triangulated_h5 = find_triangulated_h5(session_dir)
+    
+    script_dir = Path(__file__).parent.parent
+    arena_3d_path = script_dir / "data" / "newarena.h5"
+    if not arena_3d_path.exists():
+        arena_3d_path = script_dir / "tests" / "assets" / "newarena.h5"
+    arena_views_path = script_dir / "tests" / "assets" / "arena_views.h5"
+    
+    assert arena_3d_path.exists(), f"Arena 3D file not found: {arena_3d_path}"
+    assert arena_views_path.exists(), f"Arena views file not found: {arena_views_path}"
+    
+    session = xr.open_dataset(triangulated_h5)
+    arena_3d = xr.open_dataset(arena_3d_path)
+    arena_views = xr.open_dataset(arena_views_path)
+    
+    cricket_coords_2d = load_2d_coordinates(cricket_pickle)
+    cricket_coords_2d_mean = np.nanmean(cricket_coords_2d, axis=1)
+    cricket_coords_3d = convert_cricket_coordinates(cricket_coords_2d_mean, arena_3d, arena_views)
+    
+    print(f"Velocity: {get_velocity(session, args.time_slice).shape}")
+    print(f"Acceleration: {get_accelleration(session, args.time_slice).shape}")
+    print(f"Head rear: {get_head_rear(session, args.time_slice).shape}")
+    print(f"Theta: {get_theta(session, ('nose', 'tailbase'), args.time_slice).shape}")
+    print(f"Turning rate: {get_turning_rate(session, ('nose', 'tailbase'), args.time_slice).shape}")
+    print(f"Yaw offset: {get_yaw_offset(session, args.time_slice).shape}")
+    print(f"Pitch angle: {get_pitch_angle(session, ('nose', 'tailbase'), args.time_slice).shape}")
+    print(f"Velocity components: {get_velocity_components(session, args.time_slice)[0].shape}")
+    print(f"Manipulation index: {get_manipulation_index_paws(session, args.time_slice)[0].shape}")
+    print(f"Freezing: {get_freezing(session, args.time_slice).shape}")
+    print(f"Curvature: {get_curvature(session, args.time_slice).shape}")
+    print(f"Position centroid: {get_position_centroid(session, args.time_slice).shape}")
+    print(f"Distance to walls: {get_distance_to_walls(session, arena_3d, args.time_slice).shape}")
+    
+    mouse_centroid = get_position_centroid(session, args.time_slice)
+    min_len = min(len(mouse_centroid), len(cricket_coords_3d))
+    distance_mouse_cricket = get_distance_mouse_cricket(mouse_centroid[:min_len], cricket_coords_3d[:min_len])
+    print(f"Distance mouse-cricket: {distance_mouse_cricket.shape}")
 
     
