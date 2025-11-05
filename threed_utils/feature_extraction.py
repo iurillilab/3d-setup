@@ -298,24 +298,49 @@ def get_distance_to_walls(session:xr.Dataset, arena:xr.Dataset, time_slice:Optio
     d_wall = np.minimum.reduce([dist_to_x_min, dist_to_x_max, dist_to_y_min, dist_to_y_max])  # shape: (frame,)
     return d_wall
 
-def load_cricket_coordinates(pickle_path:Path)->np.ndarray:
+def load_2d_coordinates(pickle_path:Path) -> np.ndarray:
     """
-    Loads the coordinates of the cricket
+    Loads the coordinates of the cricket.
+    Returns an array of shape (frames, n, 2), where n is the number of tracked elements (may vary).
     """
-    assert pickle_path.exists(), f"pickle_path does not exist: {pickle_path}"
+
     data_cricket = pickle.load(open(pickle_path, "rb"))
-    assert isinstance(data_cricket, dict), "pickle file must contain a dictionary"
-    # we have a dict with "metadata" and one key for each frame:
-    # we want to extract the coordinates for each frame and put them in an array:
     coordinates = []
+
+    # Find a representative frame to determine number of tracked elements (n)
+    n_tracked = None
     for frame in data_cricket.keys():
-        #skip metadata
         if frame == "metadata":
             continue
-        # get the coordinates:
-        assert "coordinates" in data_cricket[frame], f"frame {frame} must contain 'coordinates'"
-        coordinates.append(data_cricket[frame]["coordinates"][0][0])
-    return np.array(coordinates)
+        frame_coords = data_cricket[frame]["coordinates"]
+        # coordinates is typically a list of shape (n, 1, 2) or (n, 2)
+        # let's reshape to (n, 2) always
+        if isinstance(frame_coords, list):
+            arr = np.array(frame_coords)
+            if arr.ndim == 3:
+                arr = arr[:, 0, :]  # (n, 2)
+            elif arr.ndim == 2:
+                pass  # (n, 2)
+            else:
+                arr = arr.reshape(-1, 2)
+        else:
+            arr = np.array(frame_coords)
+            if arr.ndim == 3:
+                arr = arr[:, 0, :]
+            elif arr.ndim == 2:
+                pass
+            else:
+                arr = arr.reshape(-1, 2)
+        coordinates.append(arr)
+    # pad all frames to the same number of elements if necessary
+    max_n = max(coord.shape[0] for coord in coordinates)
+    coords_padded = []
+    for arr in coordinates:
+        if arr.shape[0] < max_n:
+            pad_width = ((0, max_n - arr.shape[0]), (0, 0))
+            arr = np.pad(arr, pad_width, mode='constant', constant_values=np.nan)
+        coords_padded.append(arr)
+    return np.array(coords_padded)
 def convert_cricket_coordinates(cricket_coordinates:np.ndarray, arena_3d:xr.Dataset, arena_views:xr.Dataset)->np.ndarray:
     """
     Converts the cricket coordinates to arena floor coordinates
@@ -360,7 +385,12 @@ def get_distance_mouse_cricket(mouse_coordinates:np.ndarray, cricket_coordinates
     assert mouse_coordinates.shape[1] >= 2, "mouse_coordinates must have at least 2 columns (x, y)"
     assert cricket_coordinates.shape[1] == 2, "cricket_coordinates must have shape (N, 2)"
     assert len(mouse_coordinates) == len(cricket_coordinates), "mouse and cricket coordinates must have same length"
-    return np.linalg.norm(mouse_coordinates[:, :2] - cricket_coordinates, axis=1)
+    if mouse_coordinates.ndim == 3:
+        # Average across keypoints (axis=1)
+        mouse_centroid = np.nanmean(mouse_coordinates[:, :, :2], axis=1)
+    else:
+        mouse_centroid = mouse_coordinates[:, :2]
+    return np.linalg.norm(mouse_centroid - cricket_coordinates, axis=1)
 
 
 if __name__ == "__main__":
