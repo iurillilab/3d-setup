@@ -8,22 +8,22 @@ from pathlib import Path
 import pickle
 from argparse import ArgumentParser
 from tqdm import tqdm
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
-def get_velocity(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_velocity(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Calculate velocity from position data
     
     Args:
         session (xr.Dataset): The input dataset containing position data
-        time_slice (slice): The time slice to calculate velocity over
+        time_slice (int, optional): The time slice to calculate velocity over. If None, uses all data.
         
     Returns:
         np.ndarray: The velocity data
     """
     assert "position" in session, "session must contain 'position' variable"
-    assert time_slice > 0, "time_slice must be positive"
-    if time_slice:
+    if time_slice is not None:
+        assert time_slice > 0, "time_slice must be positive"
         coordinates = session.position.isel(time=slice(0,time_slice)).values
     else:
         coordinates = session.position.values
@@ -33,20 +33,20 @@ def get_velocity(session:xr.Dataset, time_slice:int)->np.ndarray:
     velocity = np.linalg.norm(velocity, axis=1)
     return velocity
 
-def get_accelleration(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_accelleration(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Calculate accelleration from position data
     
     Args:
         session (xr.Dataset): The input dataset containing position data
-        time_slice (slice): The time slice to calculate accelleration over
+        time_slice (int, optional): The time slice to calculate accelleration over. If None, uses all data.
         
     Returns:
         np.ndarray: The accelleration data
     """
     assert "position" in session, "session must contain 'position' variable"
-    assert time_slice > 0, "time_slice must be positive"
-    if time_slice:
+    if time_slice is not None:
+        assert time_slice > 0, "time_slice must be positive"
         coordinates = session.position.isel(time=slice(0,time_slice)).values
     else:
         coordinates = session.position.values
@@ -58,39 +58,44 @@ def get_accelleration(session:xr.Dataset, time_slice:int)->np.ndarray:
     accelleration = np.linalg.norm(accelleration, axis=1)
     return accelleration
 
-def get_head_rear(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_head_rear(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the verrtifical movement of the head as an heuristic of rear
 
     Args:
         session(xr.Dataset): input xrarray 
-        time_slice: int max frame
+        time_slice (int, optional): max frame. If None, uses all data.
     Returns:
         np.ndarray
     """
     assert "position" in session, "session must contain 'position' variable"
-    assert time_slice > 0, "time_slice must be positive"
     assert "z" in session.position.space, "position must have 'z' in space dimension"
-    rear = session["position"].sel(keypoints=["nose", "ear_lf", "ear_rt"], space="z").isel(time=slice(0, time_slice)).values.squeeze()
+    if time_slice is not None:
+        assert time_slice > 0, "time_slice must be positive"
+        rear = session["position"].sel(keypoints=["nose", "ear_lf", "ear_rt"], space="z").isel(time=slice(0, time_slice)).values.squeeze()
+    else:
+        rear = session["position"].sel(keypoints=["nose", "ear_lf", "ear_rt"], space="z").values.squeeze()
     return rear
-def get_theta(session:xr.Dataset, time_slice:int, keypoints:tuple)->np.ndarray:
+def get_theta(session:xr.Dataset, keypoints:tuple, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the theta angle of the head in the 2D xy space
     
     Args:
         session(xr.Dataset): input xr.Dataset
-        time_slice: int max frame
+        keypoints: tuple of keypoints
+        time_slice (int, optional): max frame. If None, uses all data.
     Returns:
         The direction fo the head in the 2D xy space [-pi, pi]
     """
     assert "position" in session, "session must contain 'position' variable"
-    assert time_slice > 0, "time_slice must be positive"
     assert len(keypoints) == 2, "keypoints must be tuple of 2 keypoints"
     keypoint_1, keypoint_2 = keypoints
     assert keypoint_1 in session.position.keypoints, f"keypoint '{keypoint_1}' not found"
     assert keypoint_2 in session.position.keypoints, f"keypoint '{keypoint_2}' not found"
     diff = session["position"].sel(keypoints=keypoint_1).values - session["position"].sel(keypoints=keypoint_2).values
-    diff = diff[:time_slice]
+    if time_slice is not None:
+        assert time_slice > 0, "time_slice must be positive"
+        diff = diff[:time_slice]
     assert diff.shape[1] >= 2, "position must have at least 2 spatial dimensions (x, y)"
     diff_norm = np.linalg.norm(diff, axis=1)
     v_x = diff[:, 0] / diff_norm
@@ -98,46 +103,46 @@ def get_theta(session:xr.Dataset, time_slice:int, keypoints:tuple)->np.ndarray:
     theta_head = np.arctan2(v_y, v_x)
     return theta_head
     
-def get_turning_rate(session:xr.Dataset, time_slice:int, keypoints:tuple)->np.ndarray:
+def get_turning_rate(session:xr.Dataset, keypoints:tuple, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the turning rate of the head
     Args:
         session(xr.Dataset): input xr.Dataset
-        time_slice: int max frame
         keypoints: tuple of keypoints
+        time_slice (int, optional): max frame. If None, uses all data.
     Returns:
         np.ndarray: turning rate
     """
-    theta_head = get_theta(session, time_slice, keypoints)
+    theta_head = get_theta(session, keypoints, time_slice)
     dtheta = np.vstack([np.zeros((1,)), np.diff(theta_head, axis=0)])
     #wrapped to [-pi, pi]
     dtheta = np.mod(dtheta + np.pi, 2 * np.pi) - np.pi
     dtheta = dtheta 
     return dtheta
-def get_yaw_offset(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_yaw_offset(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the yaw offset of the head
     Args:
         session(xr.Dataset): input xr.Dataset
-        time_slice: int max frame
+        time_slice (int, optional): max frame. If None, uses all data.
     Returns:
         np.ndarray: 0 (body and head are aligned), >0 (head is left of body), <0 (head is right of body)
     """
-    theta_body = get_theta(session, time_slice, ("back_mid", "tailbase"))
-    theta_head = get_theta(session, time_slice, ("nose", "tailbase"))
+    theta_body = get_theta(session, ("back_mid", "tailbase"), time_slice)
+    theta_head = get_theta(session, ("nose", "tailbase"), time_slice)
     delta_theta = theta_head - theta_body
     #wrap to [-pi, pi]
     delta_theta = np.mod(delta_theta + np.pi, 2 * np.pi) - np.pi
     return delta_theta
 
-def get_pitch_angle(session:xr.Dataset, time_slice:int, keypoints:tuple)->np.ndarray:
+def get_pitch_angle(session:xr.Dataset, keypoints:tuple, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the pitch angle of the head
 
     Args:
         session(xr.Dataset): input xr.Dataset
-        time_slice: int max frame
         keypoints: tuple of keypoints
+        time_slice (int, optional): max frame. If None, uses all data.
     Returns:
         np.ndarray: pitch angle
         pitch = 0 when head and body are aligned, pitch > 0 when head is up, pitch < 0 when head is down
@@ -148,7 +153,8 @@ def get_pitch_angle(session:xr.Dataset, time_slice:int, keypoints:tuple)->np.nda
     assert keypoint_1 in session.position.keypoints, f"keypoint '{keypoint_1}' not found"
     assert keypoint_2 in session.position.keypoints, f"keypoint '{keypoint_2}' not found"
     assert "z" in session.position.space, "position must have 'z' in space dimension"
-    if time_slice:
+    if time_slice is not None:
+        assert time_slice > 0, "time_slice must be positive"
         v_nose = session.position.sel(keypoints=keypoint_1).values[:time_slice]
         v_tailbase = session.position.sel(keypoints=keypoint_2).values[:time_slice]
     else:
@@ -161,30 +167,35 @@ def get_pitch_angle(session:xr.Dataset, time_slice:int, keypoints:tuple)->np.nda
     #compute pitch angle
     pitch_angle = np.arctan2(v_body[:, 2], L_xy)
     return pitch_angle
-def get_velocity_components(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_velocity_components(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the forward, sideways, and vertical velocity components
 
     Args:
         session(xr.Dataset): input xr.Dataset
-        time_slice: int max frame
+        time_slice (int, optional): max frame. If None, uses all data.
     Returns:
         np.ndarray: forward, sideways, and vertical velocity components
     """
     assert "position" in session, "session must contain 'position' variable"
-    assert time_slice > 0, "time_slice must be positive"
     assert "nose" in session.position.keypoints, "position must have 'nose' keypoint"
     assert "tailbase" in session.position.keypoints, "position must have 'tailbase' keypoint"
     # 1. Centroid positions and 3D displacement (velocity vector per frame)
-    centroids = session.position.isel(time=slice(0, time_slice)).values.mean(axis=2).squeeze()
+    if time_slice is not None:
+        assert time_slice > 0, "time_slice must be positive"
+        centroids = session.position.isel(time=slice(0, time_slice)).values.mean(axis=2).squeeze()
+        nose = session.position.sel(keypoints="nose").isel(time=slice(0, time_slice)).values
+        tail = session.position.sel(keypoints="tailbase").isel(time=slice(0, time_slice)).values
+    else:
+        centroids = session.position.values.mean(axis=2).squeeze()
+        nose = session.position.sel(keypoints="nose").values
+        tail = session.position.sel(keypoints="tailbase").values
     # centroids.shape -> (T, 3)
 
     displacement = np.vstack([np.zeros((1, 3)), np.diff(centroids, axis=0)])
     # displacement.shape -> (T, 3)
 
     # 2. Body direction: tailbase -> nose, unit vector per frame
-    nose = session.position.sel(keypoints="nose").isel(time=slice(0, time_slice)).values
-    tail = session.position.sel(keypoints="tailbase").isel(time=slice(0, time_slice)).values
 
     # nose, tail: (T, 3, 1) -> drop individuals dim
     nose = nose.squeeze(-1)   # (T, 3)
@@ -212,16 +223,19 @@ def get_velocity_components(session:xr.Dataset, time_slice:int)->np.ndarray:
     vertical_velocity = displacement[:, 2]                               # (T,)
     # or: vertical_velocity = np.sum(displacement * z_axis, axis=1)
     return forward_velocity, side_velocity, vertical_velocity
-def get_manipulation_index_paws(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_manipulation_index_paws(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the manipulation index of the paws
     """
     assert "position" in session, "session must contain 'position' variable"
-    assert time_slice > 0, "time_slice must be positive"
     assert "forepaw_lf" in session.position.keypoints, "position must have 'forepaw_lf' keypoint"
     assert "forepaw_rt" in session.position.keypoints, "position must have 'forepaw_rt' keypoint"
-    v_lf = session.position.sel(keypoints="forepaw_lf").values.squeeze()[:time_slice]
-    v_rt = session.position.sel(keypoints="forepaw_rt").values.squeeze()[:time_slice]
+    v_lf = session.position.sel(keypoints="forepaw_lf").values.squeeze()
+    v_rt = session.position.sel(keypoints="forepaw_rt").values.squeeze()
+    if time_slice is not None:
+        assert time_slice > 0, "time_slice must be positive"
+        v_lf = v_lf[:time_slice]
+        v_rt = v_rt[:time_slice]
     body_speed = get_velocity(session, time_slice)
     lf_disp = np.vstack([np.zeros((1, 3)), np.diff(v_lf, axis=0)])
     rt_disp = np.vstack([np.zeros((1, 3)), np.diff(v_rt, axis=0)])
@@ -231,7 +245,7 @@ def get_manipulation_index_paws(session:xr.Dataset, time_slice:int)->np.ndarray:
     manipulation_idx_rt = rt_speed / body_speed
     return manipulation_idx_lf, manipulation_idx_rt
 
-def get_freezing(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_freezing(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the freezing of the animal
     """
@@ -239,25 +253,28 @@ def get_freezing(session:xr.Dataset, time_slice:int)->np.ndarray:
     threshold = np.percentile(velocity, 10)
     freezing = velocity < threshold
     return freezing
-def get_curvature(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_curvature(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the curvature of the path
     """
-    turning_rate = get_turning_rate(session, time_slice,  keypoints=("nose", "tailbase"))
+    turning_rate = get_turning_rate(session, ("nose", "tailbase"), time_slice)
     velocity = get_velocity(session, time_slice)
     assert len(turning_rate) == len(velocity), "turning_rate and velocity must have same length"
     curvature = np.abs(turning_rate.squeeze()) / velocity + np.random.randn(len(velocity)) * 0.01
     return curvature
-def get_position_centroid(session:xr.Dataset, time_slice:int)->np.ndarray:
+def get_position_centroid(session:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the centroid of the position
     """
     assert "position" in session, "session must contain 'position' variable"
-    assert time_slice > 0, "time_slice must be positive"
-    centroid = session.position.isel(time=slice(0, time_slice)).values.mean(axis=2).squeeze()
+    if time_slice is not None:
+        assert time_slice > 0, "time_slice must be positive"
+        centroid = session.position.isel(time=slice(0, time_slice)).values.mean(axis=2).squeeze()
+    else:
+        centroid = session.position.values.mean(axis=2).squeeze()
     return centroid
 
-def get_distance_to_walls(session:xr.Dataset, arena:xr.Dataset, time_slice:int)->np.ndarray:
+def get_distance_to_walls(session:xr.Dataset, arena:xr.Dataset, time_slice:Optional[int]=None)->np.ndarray:
     """
     Computes the distance to the walls
     """
@@ -352,24 +369,24 @@ if __name__ == "__main__":
     arena_3d = xr.open_dataset("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/data/newarena.h5")
     arena_views = xr.open_dataset("/Users/thomasbush/Documents/Vault/Iurilli_lab/3d_tracking/3d-setup/tests/assets/arena_views.h5")
     # let's get the velocity:
-    velocity = get_velocity(session, time_slice=1000)
+    velocity = get_velocity(session)
     print(velocity.shape)
     # let's get the accelleration:
-    accelleration = get_accelleration(session, time_slice=1000)
+    accelleration = get_accelleration(session)
     print(accelleration.shape)
     # let's get the head rear:
-    head_rear = get_head_rear(session, time_slice=1000)
+    head_rear = get_head_rear(session)
     print(head_rear.shape)
     # let's print the other features:
-    print(get_theta(session, time_slice=1000, keypoints=("nose", "tailbase")).shape)
-    print(get_turning_rate(session, time_slice=1000, keypoints=("nose", "tailbase")).shape)
-    print(get_yaw_offset(session, time_slice=1000).shape)
-    print(get_pitch_angle(session, time_slice=1000, keypoints=("nose", "tailbase")).shape)
-    print(get_velocity_components(session, time_slice=1000)[0].shape)
-    print(get_manipulation_index_paws(session, time_slice=1000)[0].shape)
-    print(get_freezing(session, time_slice=1000).shape)
-    print(get_curvature(session, time_slice=1000).shape)
-    print(get_position_centroid(session, time_slice=1000).shape)
-    print(get_distance_to_walls(session, arena_3d, time_slice=1000).shape)
+    print(get_theta(session, ("nose", "tailbase")).shape)
+    print(get_turning_rate(session, ("nose", "tailbase")).shape)
+    print(get_yaw_offset(session).shape)
+    print(get_pitch_angle(session, ("nose", "tailbase")).shape)
+    print(get_velocity_components(session)[0].shape)
+    print(get_manipulation_index_paws(session)[0].shape)
+    print(get_freezing(session).shape)
+    print(get_curvature(session).shape)
+    print(get_position_centroid(session).shape)
+    print(get_distance_to_walls(session, arena_3d).shape)
 
     
