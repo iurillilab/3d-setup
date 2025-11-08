@@ -400,7 +400,7 @@ class FeatureExtractor:
 
         return forward_velocity, side_velocity, vertical_velocity
 
-    def get_manipulation_index_paws(self, time_slice: Optional[int] = None, session_path: Optional[str] = None) -> tuple:
+    def get_manipulation_index_paws(self, time_slice: Optional[int] = None, session_path: Optional[str] = None, target_distance: np.ndarray = None, quantile_manipulation:float=0.75, quantile_distance:float=0.1) -> tuple:
         """Computes the manipulation index of the paws"""
         session_data = self._get_session_data(session_path)
         session = session_data["session"]
@@ -414,6 +414,9 @@ class FeatureExtractor:
             v_lf = v_lf[:time_slice]
             v_rt = v_rt[:time_slice]
         body_speed = self.get_velocity(time_slice, session_path)
+        if not target_distance:
+            target_distance = self.get_distance_mouse_cricket(time_slice, session_path)
+        target_distance_slice = target_distance[:time_slice]
         lf_disp = np.vstack([np.zeros((1, 3)), np.diff(v_lf, axis=0)])
         rt_disp = np.vstack([np.zeros((1, 3)), np.diff(v_rt, axis=0)])
         lf_speed = np.linalg.norm(lf_disp, axis=1)
@@ -421,9 +424,15 @@ class FeatureExtractor:
         # Avoid division by zero
         body_speed_min = 1e-3
         body_speed_safe = np.where(body_speed > 0, body_speed, body_speed_min)
-        manipulation_idx_lf = lf_speed / body_speed_safe
-        manipulation_idx_rt = rt_speed / body_speed_safe
-        return manipulation_idx_lf, manipulation_idx_rt
+        manipulation_idx = (lf_speed / body_speed_safe + rt_speed / body_speed_safe) / 2
+        manipulation_threshold = np.quantile(manipulation_idx, quantile_manipulation)
+        distance_threshold = np.quantile(target_distance_slice, quantile_distance)
+        manipulation_idx_filtered = np.where(manipulation_idx > manipulation_threshold, manipulation_idx, 0)
+        mask_manipulation_close = (target_distance_slice < distance_threshold) & (manipulation_idx_filtered > manipulation_threshold)
+        mask_manipulation_far = (target_distance_slice >= distance_threshold) & (manipulation_idx_filtered > manipulation_threshold)
+        manipulation_idx_filtered = np.where(mask_manipulation_close, 1, manipulation_idx_filtered)
+        manipulation_idx_filtered = np.where(mask_manipulation_far, -1, manipulation_idx_filtered)
+        return manipulation_idx_filtered
 
     def get_freezing(self, time_slice: Optional[int] = None, session_path: Optional[str] = None) -> np.ndarray:
         """Computes the freezing of the animal"""
