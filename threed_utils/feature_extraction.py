@@ -124,10 +124,13 @@ class FeatureExtractor:
         self.session = session_data["session"]
         self.cricket_coords_2d = session_data["cricket_coords_2d"]
         self.cricket_coords_3d = session_data["cricket_coords_3d"]
+        self.mouse_coords_2d = session_data["mouse_coords_2d"]
+        self.prey_label = session_data.get("prey_label")
 
     def _is_cricket_session(self, session_dir: Path) -> bool:
-        """Check if session is a cricket session based on path"""
-        return "cricket" in str(session_dir).lower()
+        """Check if session contains a prey target (cricket/object) based on path"""
+        session_str = str(session_dir).lower()
+        return "cricket" in session_str or "object" in session_str
 
     def _load_session_data(self, session_dir: Path, arena_3d: xr.Dataset, arena_views: xr.Dataset) -> dict:
         """Load data for a single session"""
@@ -139,18 +142,33 @@ class FeatureExtractor:
             "session": session,
             "arena_3d": arena_3d,
             "arena_views": arena_views,
+            "mouse_coords_2d": None,
             "cricket_coords_2d": None,
-            "cricket_coords_3d": None
+            "cricket_coords_3d": None,
+            "prey_label": None
         }
+
+        try:
+            mouse_pickle = self._find_latest_mouse_pickle_in_dir(session_dir)
+            mouse_coords_2d, mouse_bodyparts = self._load_2d_coordinates(mouse_pickle)
+            result["mouse_coords_2d"] = mouse_coords_2d
+            result["mouse_coords_2d_bodyparts"] = mouse_bodyparts
+        except FileNotFoundError as e:
+            print(f"Warning: Could not find mouse central 2D pickle for {session_dir}: {e}")
+        except Exception as e:
+            print(f"Warning: Failed to load mouse 2D coordinates for {session_dir}: {e}")
 
         if self._is_cricket_session(session_dir):
             try:
-                cricket_pickle = self._find_latest_pickle_in_dir(session_dir, "cricket")
-                cricket_coords_2d = self._load_2d_coordinates(cricket_pickle)
-                cricket_coords_2d_mean = np.nanmean(cricket_coords_2d, axis=1)
+                prey_pickle, prey_label = self._find_latest_prey_pickle_in_dir(session_dir)
+                cricket_coords_2d, cricket_bodyparts = self._load_2d_coordinates(prey_pickle)
+                with np.errstate(invalid='ignore'):
+                    cricket_coords_2d_mean = np.nanmean(cricket_coords_2d, axis=1)
                 cricket_coords_3d = self._convert_cricket_coordinates(cricket_coords_2d_mean, arena_3d, arena_views)
                 result["cricket_coords_2d"] = cricket_coords_2d
+                result["cricket_coords_2d_bodyparts"] = cricket_bodyparts
                 result["cricket_coords_3d"] = cricket_coords_3d
+                result["prey_label"] = prey_label
             except Exception as e:
                 print(f"Warning: Could not load cricket coordinates for {session_dir}: {e}")
 
@@ -175,6 +193,66 @@ class FeatureExtractor:
             raise FileNotFoundError(f"No pickle files found matching pattern '*{pattern}*_full.pickle' in {session_dir}")
         return max(candidates, key=lambda p: p.stat().st_mtime)
 
+    def _find_latest_pickle_in_dir_with_keywords(
+        self,
+        session_dir: Path,
+        include_keywords: List[str],
+        exclude_keywords: Optional[List[str]] = None
+    ) -> Path:
+        """Find the most recent pickle file matching include/exclude keyword constraints"""
+        patterns = ["*.pickle", "*.pkl"]
+        candidates: List[Path] = []
+        for pattern in patterns:
+            candidates.extend(session_dir.rglob(pattern))
+
+        include_lower = [kw.lower() for kw in include_keywords]
+        exclude_lower = [kw.lower() for kw in (exclude_keywords or [])]
+
+        matches = []
+        for candidate in candidates:
+            name_lower = candidate.name.lower()
+            if all(keyword in name_lower for keyword in include_lower):
+                if all(keyword not in name_lower for keyword in exclude_lower):
+                    matches.append(candidate)
+
+        if not matches:
+            raise FileNotFoundError(
+                f"No pickle files found in {session_dir} containing keywords {include_lower}"
+            )
+        return max(matches, key=lambda p: p.stat().st_mtime)
+
+    def _find_latest_mouse_pickle_in_dir(self, session_dir: Path) -> Path:
+        """Find the most recent central view mouse pickle file"""
+        search_orders = [
+            ["centraldlc", "mouse"],
+            ["central", "mouse"],
+            ["mouse"],
+        ]
+        for keywords in search_orders:
+            try:
+                return self._find_latest_pickle_in_dir_with_keywords(session_dir, keywords)
+            except FileNotFoundError:
+                continue
+        raise FileNotFoundError(f"No mouse pickle files found in {session_dir}")
+
+    def _find_latest_prey_pickle_in_dir(self, session_dir: Path) -> Tuple[Path, str]:
+        """Find the most recent central view pickle for cricket/object prey"""
+        search_orders = [
+            (["centraldlc", "cricket"], "cricket"),
+            (["central", "cricket"], "cricket"),
+            (["cricket"], "cricket"),
+            (["centraldlc", "object"], "object"),
+            (["central", "object"], "object"),
+            (["object"], "object"),
+        ]
+        for keywords, label in search_orders:
+            try:
+                path = self._find_latest_pickle_in_dir_with_keywords(session_dir, keywords)
+                return path, label
+            except FileNotFoundError:
+                continue
+        raise FileNotFoundError(f"No cricket/object pickle files found in {session_dir}")
+
     def _find_triangulated_h5_in_dir(self, session_dir: Path) -> Path:
         """Find the triangulated h5 file in given directory"""
         candidates = list(session_dir.rglob("*triangulated*.h5"))
@@ -182,9 +260,15 @@ class FeatureExtractor:
             raise FileNotFoundError(f"No triangulated h5 files found in {session_dir}")
         return max(candidates, key=lambda p: p.stat().st_mtime)
 
-    def _load_2d_coordinates(self, pickle_path: Path) -> np.ndarray:
-        """Loads the coordinates from pickle file"""
+    def _load_2d_coordinates(self, pickle_path: Path) -> Tuple[np.ndarray, Optional[List[str]]]:
+        """Loads the coordinates from pickle file along with optional bodypart names"""
         data = pickle.load(open(pickle_path, "rb"))
+        bodyparts: Optional[List[str]] = None
+        metadata = data.get("metadata")
+        if isinstance(metadata, dict):
+            bodyparts_value = metadata.get("bodyparts")
+            if isinstance(bodyparts_value, (list, tuple)):
+                bodyparts = list(bodyparts_value)
         coordinates = []
         for frame in data.keys():
             if frame == "metadata":
@@ -214,7 +298,7 @@ class FeatureExtractor:
                 pad_width = ((0, max_n - arr.shape[0]), (0, 0))
                 arr = np.pad(arr, pad_width, mode='constant', constant_values=np.nan)
             coords_padded.append(arr)
-        return np.array(coords_padded)
+        return np.array(coords_padded), bodyparts
 
     def _convert_cricket_coordinates(self, cricket_coordinates: np.ndarray, arena_3d: xr.Dataset, arena_views: xr.Dataset) -> np.ndarray:
         """Converts cricket coordinates to arena floor coordinates"""
@@ -251,8 +335,10 @@ class FeatureExtractor:
                 "session": self.session,
                 "arena_3d": self.arena_3d,
                 "arena_views": self.arena_views,
+                "mouse_coords_2d": getattr(self, 'mouse_coords_2d', None),
                 "cricket_coords_2d": getattr(self, 'cricket_coords_2d', None),
-                "cricket_coords_3d": getattr(self, 'cricket_coords_3d', None)
+                "cricket_coords_3d": getattr(self, 'cricket_coords_3d', None),
+                "prey_label": getattr(self, 'prey_label', None)
             }
         if len(self.sessions) == 1:
             return list(self.sessions.values())[0]
@@ -414,7 +500,7 @@ class FeatureExtractor:
             v_lf = v_lf[:time_slice]
             v_rt = v_rt[:time_slice]
         body_speed = self.get_velocity(time_slice, session_path)
-        if not target_distance:
+        if target_distance is None:
             target_distance = self.get_distance_mouse_cricket(time_slice, session_path)
         target_distance_slice = target_distance[:time_slice]
         lf_disp = np.vstack([np.zeros((1, 3)), np.diff(v_lf, axis=0)])
@@ -488,6 +574,10 @@ class FeatureExtractor:
     def get_distance_mouse_cricket(self, time_slice: Optional[int] = None, session_path: Optional[str] = None) -> np.ndarray:
         """Computes the distance between the mouse and the cricket"""
         session_data = self._get_session_data(session_path)
+        cricket_coords_2d = session_data.get("cricket_coords_2d")
+        mouse_coords_2d = session_data.get("mouse_coords_2d")
+        if cricket_coords_2d is not None and mouse_coords_2d is not None:
+            return self.get_distance_mouse_cricket_2d(time_slice, session_path)
         cricket_coords_3d = session_data["cricket_coords_3d"]
         if cricket_coords_3d is None:
             raise ValueError("Cricket coordinates not available for this session (object session?)")
@@ -506,6 +596,65 @@ class FeatureExtractor:
             mouse_centroid = mouse_centroid[:, :2]
 
         return np.linalg.norm(mouse_centroid - cricket_coords, axis=1)
+
+    def get_mouse_centroid_2d(self, time_slice: Optional[int] = None, session_path: Optional[str] = None) -> np.ndarray:
+        """Computes the 2D centroid of the mouse from central view coordinates"""
+        session_data = self._get_session_data(session_path)
+        mouse_coords_2d = session_data.get("mouse_coords_2d")
+        if mouse_coords_2d is None:
+            raise ValueError("Mouse 2D coordinates not available for this session")
+        coords = mouse_coords_2d
+        bodyparts = session_data.get("mouse_coords_2d_bodyparts") or []
+        if time_slice is not None:
+            assert time_slice > 0
+            coords = coords[:time_slice]
+        if coords.ndim == 2:
+            centroid = coords
+        else:
+            torso_keypoints = {"nose", "back_mid", "tailbase", "spine_mid", "spine_base"}
+            if bodyparts:
+                torso_indices = [idx for idx, name in enumerate(bodyparts) if name in torso_keypoints]
+            else:
+                torso_indices = []
+
+            if torso_indices:
+                coords_subset = coords[:, torso_indices, :]
+            else:
+                coords_subset = coords
+
+            with np.errstate(invalid='ignore'):
+                centroid = np.nanmean(coords_subset, axis=1)
+        return centroid
+
+    def get_cricket_centroid_2d(self, time_slice: Optional[int] = None, session_path: Optional[str] = None) -> np.ndarray:
+        """Computes the 2D centroid of the prey (cricket/object) from central view coordinates"""
+        session_data = self._get_session_data(session_path)
+        cricket_coords_2d = session_data.get("cricket_coords_2d")
+        if cricket_coords_2d is None:
+            raise ValueError("Cricket coordinates not available for this session (object session?)")
+        coords = cricket_coords_2d
+        if time_slice is not None:
+            assert time_slice > 0
+            coords = coords[:time_slice]
+        if coords.ndim == 2:
+            centroid = coords
+        else:
+            with np.errstate(invalid='ignore'):
+                centroid = np.nanmean(coords, axis=1)
+        return centroid
+
+    def get_distance_mouse_cricket_2d(self, time_slice: Optional[int] = None, session_path: Optional[str] = None) -> np.ndarray:
+        """Computes the distance between the mouse centroid and prey in central 2D view"""
+        mouse_centroid = self.get_mouse_centroid_2d(time_slice, session_path)
+        prey_centroid = self.get_cricket_centroid_2d(time_slice, session_path)
+        min_len = min(len(mouse_centroid), len(prey_centroid))
+        if min_len == 0:
+            return np.array([])
+        mouse_centroid = mouse_centroid[:min_len]
+        prey_centroid = prey_centroid[:min_len]
+        assert mouse_centroid.shape[1] == 2
+        assert prey_centroid.shape[1] == 2
+        return np.linalg.norm(mouse_centroid - prey_centroid, axis=1)
 
     def extract_all_features_to_dataframe(self, time_slice: Optional[int] = None, session_path: Optional[str] = None) -> pd.DataFrame:
         """Extract all features for a session and return as DataFrame"""
@@ -538,9 +687,7 @@ class FeatureExtractor:
         features['velocity_vertical'] = vertical_vel
 
         # Manipulation index (returns tuple of two arrays)
-        manip_idx_lf, manip_idx_rt = self.get_manipulation_index_paws(time_slice, session_path)
-        features['manipulation_index_lf'] = manip_idx_lf
-        features['manipulation_index_rt'] = manip_idx_rt
+        features['manipulation_index'] = self.get_manipulation_index_paws(time_slice, session_path, target_distance=self.get_distance_mouse_cricket(time_slice, session_path))
 
         # Freezing
         features['freezing'] = self.get_freezing(time_slice, session_path)
@@ -666,7 +813,7 @@ if __name__ == "__main__":
         print(f"Yaw offset: {extractor.get_yaw_offset(args.time_slice, session_path).shape}")
         print(f"Pitch angle: {extractor.get_pitch_angle(('nose', 'tailbase'), args.time_slice, session_path).shape}")
         print(f"Velocity components: {extractor.get_velocity_components(args.time_slice, session_path)[0].shape}")
-        print(f"Manipulation index: {extractor.get_manipulation_index_paws(args.time_slice, session_path)[0].shape}")
+        print(f"Manipulation index: {extractor.get_manipulation_index_paws(args.time_slice, session_path).shape}")
         print(f"Freezing: {extractor.get_freezing(args.time_slice, session_path).shape}")
         print(f"Curvature: {extractor.get_curvature(args.time_slice, session_path).shape}")
         print(f"Position centroid: {extractor.get_position_centroid(args.time_slice, session_path).shape}")
