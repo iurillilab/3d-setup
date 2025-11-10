@@ -68,12 +68,8 @@ def get_limb_outliers(ds: xr.Dataset, skeleton: list[tuple[str, str]],
     # Get position data
     pos = ds_clean["position"]  # (time, space, keypoints, individuals)
     
-    # Squeeze individuals dimension if it's size 1
-    if "individuals" in pos.dims and pos.sizes.get("individuals", 1) == 1:
-        pos = pos.squeeze("individuals")  # (time, space, keypoints)
-    
-    # Convert to numpy for easier manipulation
-    pos_array = pos.values  # (T, S, K)
+    # Keep the 4D structure but work with numpy arrays
+    pos_array = pos.values  # (T, S, K, I)
     
     print(f"Analyzing {len(skeleton)} skeleton connections for outliers...")
     print(f"Using outlier threshold: {outlier_threshold} standard deviations")
@@ -89,8 +85,8 @@ def get_limb_outliers(ds: xr.Dataset, skeleton: list[tuple[str, str]],
             kp2_idx = list(ds.keypoints.values).index(kp2)
             
             # Calculate distances between these keypoints over time
-            kp1_pos = pos_array[:, :, kp1_idx]  # (T, S)
-            kp2_pos = pos_array[:, :, kp2_idx]  # (T, S)
+            kp1_pos = pos_array[:, :, kp1_idx, 0]  # (T, S)
+            kp2_pos = pos_array[:, :, kp2_idx, 0]  # (T, S)
             
             # Compute Euclidean distance for each frame
             distances = np.linalg.norm(kp1_pos - kp2_pos, axis=1)  # (T,)
@@ -145,13 +141,24 @@ def get_limb_outliers(ds: xr.Dataset, skeleton: list[tuple[str, str]],
             for kp_name in outlier_kps:
                 try:
                     kp_idx = list(ds.keypoints.values).index(kp_name)
-                    pos_array[frame_idx, :, kp_idx] = np.nan
+                    pos_array[frame_idx, :, kp_idx, 0] = np.nan
                     total_keypoint_masks += 1
                 except ValueError:
                     continue
         
-        # Update the dataset
-        ds_clean["position"] = pos_array
+        # Update the dataset - need to maintain proper xarray structure
+        # Convert back to xarray with proper dimensions
+        pos_da = xr.DataArray(
+            pos_array,
+            dims=['time', 'space', 'keypoints', 'individuals'],
+            coords={
+                'time': ds_clean.time,
+                'space': ds_clean.space, 
+                'keypoints': ds_clean.keypoints,
+                'individuals': ds_clean.individuals
+            }
+        )
+        ds_clean["position"] = pos_da
         
         print(f"Masked {total_keypoint_masks} individual keypoint instances as outliers")
         print(f"Average keypoints masked per outlier frame: {total_keypoint_masks/total_outlier_frames:.1f}")
@@ -194,6 +201,8 @@ def load_skeleton_from_yaml(yaml_path: str) -> list[tuple[str, str]]:
     return skeleton_tuples
 
 
+
+
 if __name__ == "__main__":
     PARSER = ArgumentParser()
     PARSER.add_argument(
@@ -216,40 +225,27 @@ if __name__ == "__main__":
     data_original = xr.open_dataset(INPUT_PATH)
     data = data_original.copy()
     
-    # Apply filtering first, then select keypoints
-    if filtering_method == "savgol":
-        data["position"] = denoise_positions_savgol(data)
-    elif filtering_method == "lowpass":
-        data["position"] = denoise_position_lowpass(data)
-    
-    # Select keypoints after filtering
-    if args.keypoints is not None:
-        if len(args.keypoints) == 1:
-            data = data.sel(keypoints=args.keypoints[0])
-            data_original = data_original.sel(keypoints=args.keypoints[0])
-        else:
-            data = data.sel(keypoints=args.keypoints)
-            data_original = data_original.sel(keypoints=args.keypoints)
-    
-    # Ensure both datasets have the same structure
-    if len(data.position.shape) != 4:
-        data = data.expand_dims({"keypoints": 1})
-    if len(data_original.position.shape) != 4:
-        data_original = data_original.expand_dims({"keypoints": 1})
-    
     # Determine max_frame - use entire dataset if -1
     total_frames = len(data_original.time)
     max_frame = args.max_frame if args.max_frame != -1 else total_frames
     print(f"Dataset has {total_frames} frames, processing {max_frame} frames")
     
-    # Set y-axis limits if provided
-    ylim = None
-    if args.ymin is not None or args.ymax is not None:
-        ylim = (args.ymin, args.ymax)
-        print(f"Setting y-axis limits: {ylim}")
+    # Apply Savitzky-Golay or low-pass filtering first
+    print("\n" + "="*60)
+    print("APPLYING SMOOTHING FILTER")
+    print("="*60)
+    
+    if filtering_method == "savgol":
+        print("Applying Savitzky-Golay filter...")
+        data["position"] = denoise_positions_savgol(data)
+    elif filtering_method == "lowpass":
+        print("Applying low-pass filter...")
+        data["position"] = denoise_position_lowpass(data)
+    else:
+        print("No smoothing filter applied")
     
     # Apply outlier detection if config is provided
-    data_outlier_filtered = None
+    data_final = data.copy()  # Start with smoothed data
     if args.config is not None:
         print("\n" + "="*60)
         print("APPLYING OUTLIER FILTERING")
@@ -258,56 +254,31 @@ if __name__ == "__main__":
         # Load skeleton from YAML
         skeleton = load_skeleton_from_yaml(args.config)
         
-        # Apply outlier filtering
+        # Apply outlier filtering to the SMOOTHED data
         data_outlier_filtered = get_limb_outliers(
-            data_original, 
+            data,  # Use smoothed data, not original
             skeleton, 
             outlier_threshold=args.outlier_threshold
         )
+        data_final = data_outlier_filtered
         
-        # Generate outlier analysis plots if requested
-        if args.plot_outliers:
-            print("\nGenerating separate outlier filtering visualizations...")
-            
-            # Plot anchor distances
-            plot_anchor_distances(
-                data_original,
-                data_outlier_filtered,
-                keypoint_cols=args.keypoints,
-                max_frame=max_frame,
-                skeleton=skeleton
-            )
-            
-            # Plot center distances  
-            plot_center_distances(
-                data_original,
-                data_outlier_filtered,
-                keypoint_cols=args.keypoints,
-                max_frame=max_frame
-            )
-            
-            # Generate main comparison plot (original vs outlier-filtered)
-            print("\nGenerating main comparison plot...")
-            plot_speed_subplots(
-                data_original,
-                keypoint_cols=args.keypoints,
-                max_frame=max_frame,
-                dataset2=data_outlier_filtered,
-                dataset1_label="Original",
-                dataset2_label="Outlier-Filtered",
-                title="Speed Comparison: Original vs Outlier-Filtered",
-                ylim=ylim,
-            )
+        print("Outlier filtering applied to smoothed data")
+    else:
+        print("No outlier filtering applied")
     
-    # Generate final Savitzky-Golay comparison plot
-    print("\nGenerating Savitzky-Golay comparison plot...")
-    plot_speed_subplots(
-        data_original,
-        keypoint_cols=args.keypoints,
-        max_frame=max_frame,
-        dataset2=data,
-        dataset1_label="Original",
-        dataset2_label=f"Filtered ({filtering_method})",
-        title=f"Speed Comparison: Original vs {filtering_method.title()} Filtered",
-        ylim=ylim,
-    )
+    # Save the final filtered data (smoothed + outlier filtered)
+    output_path = Path.home() / "Downloads" / f"filtered_{INPUT_PATH.stem}.h5"
+    data_final.to_netcdf(output_path)
+    print(f"\nFinal filtered data saved to: {output_path}")
+    print(f"Use this file with pose_comparison.py to compare poses")
+    
+    # Show summary of what was applied
+    print("\n" + "="*60)
+    print("FILTERING SUMMARY")
+    print("="*60)
+    print(f"Original data: {INPUT_PATH}")
+    print(f"Filtered data: {output_path}")
+    print(f"Smoothing filter: {filtering_method}")
+    print(f"Outlier filtering: {'Yes' if args.config else 'No'}")
+    print(f"Frames processed: {max_frame}")
+    print("="*60)
